@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SYSTEM // Training Log</title>
+<style>
+:root{--blue:#3fa9ff;--purple:#9b5cff;--bg:#06070d;--panel:#0d1020;--text:#e6ecff;--muted:#7d88b0;--red:#ff4d6d;--green:#3dffa8}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:radial-gradient(circle at 50% -20%,#1a1442 0%,var(--bg) 60%);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.wrap{max-width:620px;margin:0 auto;padding:18px 14px 40px}
+.panel{background:var(--panel);border:1px solid rgba(63,169,255,.35);box-shadow:0 0 18px rgba(63,169,255,.15),inset 0 0 22px rgba(155,92,255,.06);border-radius:10px;padding:16px;margin-bottom:14px}
+h1{font-size:12px;letter-spacing:.35em;color:var(--blue);margin:0 0 10px;text-transform:uppercase;font-weight:600}
+.hunter{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.rank{font-size:46px;font-weight:800;background:linear-gradient(90deg,var(--blue),var(--purple));-webkit-background-clip:text;background-clip:text;color:transparent;line-height:1}
+.lvl{font-size:13px;color:var(--muted);margin-top:4px}
+.bar{height:12px;background:#151a33;border-radius:6px;overflow:hidden;border:1px solid #232a52;margin-top:12px}
+.fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--purple));width:0;transition:width .5s}
+.stats{display:flex;gap:14px;margin-top:12px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.stats b{color:var(--text)}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{flex:1;min-width:56px;background:#0a0e1d;border:1px solid #2a3368;color:var(--muted);padding:9px 6px;border-radius:6px;cursor:pointer;font-weight:600;font-size:13px;text-align:center}
+.tab.on{border-color:var(--blue);color:var(--text);box-shadow:0 0 10px rgba(63,169,255,.35)}
+.dayname{font-size:15px;font-weight:700;margin:12px 0 2px}
+.dayhint{font-size:12px;color:var(--muted);margin-bottom:6px}
+.ex{border:1px solid #1f2650;border-radius:8px;padding:12px;margin-bottom:10px;background:#0a0e1d}
+.exh{display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap}
+.exn{font-weight:600}
+.tgt{font-size:12px;color:var(--purple);font-weight:700;white-space:nowrap}
+.exm{font-size:11px;color:var(--muted);margin-top:3px;letter-spacing:.05em;text-transform:uppercase}
+.last{font-size:12px;color:var(--muted);margin:6px 0}
+.last b{color:var(--text)}
+.hint{color:var(--green)}
+.set{display:grid;grid-template-columns:52px 1fr 1fr 1fr auto;gap:6px;align-items:center;margin-top:6px}
+.set.done{grid-template-columns:52px 1fr auto;color:var(--green);font-size:14px}
+.set span.lab{font-size:12px;color:var(--muted)}
+input{background:#06070d;border:1px solid #2a3368;color:var(--text);padding:7px 8px;border-radius:6px;font-size:14px;width:100%;min-width:0}
+.btn{background:transparent;border:1px solid var(--blue);color:var(--blue);padding:7px 10px;border-radius:6px;font-weight:600;cursor:pointer;font-size:12px}
+.btn:hover{background:rgba(63,169,255,.12)}
+.btn.red{border-color:var(--red);color:var(--red)}
+.btn.red:hover{background:rgba(255,77,109,.1)}
+.btn.sm{padding:4px 8px;font-size:11px}
+.vrow{margin:8px 0}
+.vhead{display:flex;justify-content:space-between;font-size:13px}
+.vhead span:last-child{color:var(--muted)}
+.vbar{height:8px;background:#151a33;border-radius:4px;overflow:hidden;margin-top:4px;border:1px solid #232a52}
+.vfill{height:100%;background:linear-gradient(90deg,var(--blue),var(--purple))}
+.vfill.ok{background:linear-gradient(90deg,var(--green),var(--blue))}
+.prow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #1a2045;font-size:14px}
+.prow:last-child{border-bottom:none}
+.prow .muted{color:var(--muted);font-size:12px}
+.note{font-size:12px;color:var(--muted);margin:0 0 8px}
+.deload{border:1px solid var(--red);color:var(--red);border-radius:6px;padding:8px 10px;font-size:12px;margin-bottom:10px}
+.nut{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center}
+.nut label{font-size:13px;color:var(--muted)}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.check input{width:18px;height:18px}
+.flash{position:fixed;inset:0;display:none;place-items:center;pointer-events:none;background:rgba(155,92,255,.12);z-index:10}
+.flash.on{display:grid;animation:fade 2.4s forwards}
+.flash div{font-size:32px;font-weight:800;letter-spacing:.2em;color:#fff;text-shadow:0 0 20px var(--purple),0 0 40px var(--blue);text-align:center}
+@keyframes fade{0%{opacity:0}15%{opacity:1}75%{opacity:1}100%{opacity:0}}
+</style>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#06070d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Training">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+</head>
+<body>
+<div class="flash" id="flash"><div id="flashText">LEVEL UP</div></div>
+
+<div class="wrap">
+
+  <div class="panel">
+    <h1>[ System ]</h1>
+    <div class="hunter">
+      <div>
+        <div style="font-size:18px;font-weight:700">Training Log</div>
+        <div class="lvl" id="rankTitle"></div>
+      </div>
+      <div style="text-align:right">
+        <div class="rank" id="rank">E</div>
+        <div class="lvl">LEVEL <span id="level">1</span></div>
+      </div>
+    </div>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="stats">
+      <span>XP <b id="xpText"></b></span>
+      <span>Week <b id="weekNum">1</b> <button class="btn sm" data-wk="-1">-</button> <button class="btn sm" data-wk="1">+</button></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h1>Weekly Split</h1>
+    <div class="tabs" id="tabs"></div>
+    <div id="deloadBox"></div>
+    <div class="dayname" id="dayName"></div>
+    <div class="dayhint" id="dayHint"></div>
+    <div id="exercises"></div>
+  </div>
+
+  <div class="panel">
+    <h1>Big Three (estimated 1RM)</h1>
+    <p class="note">Estimated with Epley: weight × (1 + reps / 30). Best logged set, all weeks.</p>
+    <div id="prs"></div>
+  </div>
+
+  <div class="panel">
+    <h1>Weekly Volume (hard sets per muscle)</h1>
+    <p class="note">Starting ranges based on RP's minimum-to-maximum volume approach. Adjust once you see how you recover.</p>
+    <div id="volume"></div>
+  </div>
+
+  <div class="panel">
+    <h1>Daily Nutrition</h1>
+    <div class="nut">
+      <label for="protein">Protein (g), target 120–140</label>
+      <input id="protein" type="number" inputmode="numeric" min="0" step="1">
+      <label class="check" style="grid-column:1/3"><input type="checkbox" id="creatine"> Creatine 5 g</label>
+      <label class="check" style="grid-column:1/3"><input type="checkbox" id="water"> Water (24 oz+)</label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h1>Backup</h1>
+    <p class="note">Progress is saved in this browser only. Export a backup before clearing browser data, switching browsers, or moving the app.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="exportBtn">Export backup</button>
+      <label class="btn" style="cursor:pointer">Import backup<input type="file" id="importFile" accept="application/json" style="display:none"></label>
+    </div>
+  </div>
+
+  <div style="text-align:center">
+    <button class="btn red" id="resetBtn">Reset all data</button>
+  </div>
+
+</div>
+
+<script>
+const DAY_ORDER = ['Mon','Tue','Wed','Thu','Fri'];
+const DAYS = {
+  Mon: { title: 'Heavy Pull + Bench', hint: 'Main lifts. Deadlift and bench at RPE 8. Hold the top set at RPE 9 only when you are testing.', ex: [
+    { id:'dl',  name:'Deadlift',               sets:4, reps:'3-5',  rpe:'8', lift:'deadlift', m:'back', start:'205–215 lb' },
+    { id:'bp',  name:'Bench press',            sets:4, reps:'4-6',  rpe:'8', lift:'bench',    m:'chest', start:'90 lb' },
+    { id:'pu',  name:'Pull-ups (add weight at 6 reps)', sets:3, reps:'4-6', rpe:'8', m:'back' },
+    { id:'fp',  name:'Face pulls',             sets:3, reps:'12-15', rpe:'8', m:'shoulders' }
+  ]},
+  Tue: { title: 'Upper Volume + Calisthenics', hint: 'Hypertrophy work at moderate loads. Calisthenics skill block.', ex: [
+    { id:'idb', name:'Incline dumbbell press', sets:3, reps:'8-12', rpe:'8', m:'chest' },
+    { id:'cr',  name:'Chest-supported row',    sets:3, reps:'10-12', rpe:'8', m:'back' },
+    { id:'lr',  name:'Lateral raise',          sets:3, reps:'12-15', rpe:'9', m:'shoulders' },
+    { id:'tp',  name:'Triceps pushdown',       sets:3, reps:'10-15', rpe:'9', m:'triceps' },
+    { id:'cu',  name:'Curls',                  sets:3, reps:'8-10', rpe:'9', m:'biceps' },
+    { id:'pk',  name:'CALISTHENICS: Pike push-ups', sets:4, reps:'5-8', rpe:'7', m:'shoulders' },
+    { id:'nr',  name:'CALISTHENICS: Negative pull-ups (5 sec down)', sets:4, reps:'3-5', rpe:'8', m:'back' },
+    { id:'ab', name:'Ab roller', sets:3, reps:'6-8', rpe:'8', m:null }
+  ]},
+  Wed: { title: 'Heavy Squat + Lower Volume', hint: 'Squat is the main lift. Lower-body volume follows.', ex: [
+    { id:'sq',  name:'Squat',                  sets:4, reps:'3-5',  rpe:'8', lift:'squat', m:'quads', start:'130 lb' },
+    { id:'rdl', name:'Romanian deadlift',      sets:3, reps:'8-10', rpe:'8', m:'hams' },
+    { id:'hs',  name:'Hack squat or leg press', sets:3, reps:'10-12', rpe:'9', m:'quads' },
+    { id:'lc',  name:'Lying leg curl',         sets:3, reps:'10-12', rpe:'9', m:'hams' },
+    { id:'be',  name:'Back extension',         sets:3, reps:'12-15', rpe:'9', m:'hams' },
+    { id:'cr2', name:'Standing calf raise',    sets:3, reps:'10-15', rpe:'9', m:'calves' }
+  ]},
+  Thu: { title: 'Bench Variation + Calisthenics', hint: 'Bench variation and back-off volume. Calisthenics skill block.', ex: [
+    { id:'cgb', name:'Close-grip or paused bench', sets:4, reps:'5-7', rpe:'7-8', m:'triceps' },
+    { id:'cf',  name:'Cable fly',              sets:3, reps:'12-15', rpe:'9', m:'chest' },
+    { id:'ap',  name:'CALISTHENICS: Archer push-ups', sets:3, reps:'4-6 /side', rpe:'8', m:'chest' },
+    { id:'rr',  name:'CALISTHENICS: Renegade rows', sets:3, reps:'6 /side', rpe:'8', m:'back' },
+    { id:'ab2', name:'Ab roller', sets:3, reps:'6-8', rpe:'8', m:null },
+    { id:'chu', name:'Chin-ups',               sets:3, reps:'4-6', rpe:'8', m:'biceps' },
+    { id:'hc',  name:'Hammer curls',           sets:2, reps:'8-10', rpe:'9', m:'biceps' },
+    { id:'oe',  name:'Overhead cable extension', sets:2, reps:'12-15', rpe:'9', m:'triceps' }
+  ]},
+  Fri: { title: 'Light Lower + Posterior', hint: 'Keep this at RPE 6–7. No max attempts on Friday. If you are tired, drop to the minimum.', ex: [
+    { id:'dls', name:'Deadlift variation (RPE 6–7)', sets:3, reps:'3-5', rpe:'6-7', m:'back' },
+    { id:'ht',  name:'Hip thrust',             sets:3, reps:'8-10', rpe:'8', m:'hams' },
+    { id:'le',  name:'Leg extension',          sets:3, reps:'12-15', rpe:'9', m:'quads' },
+    { id:'lc2', name:'Seated leg curl',        sets:2, reps:'12-15', rpe:'9', m:'hams' },
+    { id:'bike',name:'Bike cardio (optional, 15–20 min)', sets:1, reps:'20 min', rpe:'6', m:null }
+  ]}
+};
+const LIFTS = { deadlift:'Deadlift', squat:'Squat', bench:'Bench' };
+const TARGETS = { chest:[10,16], back:[12,18], quads:[10,14], hams:[10,14], shoulders:[8,14], triceps:[8,12], biceps:[8,12], calves:[6,10] };
+const MUSCLE_NAMES = { chest:'Chest', back:'Back', quads:'Quads', hams:'Hamstrings / glutes', shoulders:'Shoulders', triceps:'Triceps', biceps:'Biceps', calves:'Calves' };
+const EX = {};
+DAY_ORDER.forEach(d => DAYS[d].ex.forEach(e => EX[e.id] = { ...e, day: d }));
+
+const KEY = 'workout-tracker-v1';
+const SET_XP = 10, DAY_XP = 75, PR_XP = 50;
+let S;
+
+function today() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function fresh() { return { level: 1, xp: 0, week: 1, day: 'Mon', sets: {}, awards: {}, daily: {} }; }
+function load() {
+  try { S = JSON.parse(localStorage.getItem(KEY)) || fresh(); } catch (e) { S = fresh(); }
+  if (!S.daily) S.daily = {};
+  if (!S.awards) S.awards = {};
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+
+function need(l) { return 100 * (l === undefined ? S.level : l); }
+function normalize() {
+  while (S.xp < 0 && S.level > 1) { S.level--; S.xp += need(S.level); }
+  if (S.xp < 0) S.xp = 0;
+}
+function gain(n) {
+  S.xp += n;
+  while (S.xp >= need()) { S.xp -= need(); S.level++; flash('LEVEL ' + S.level); }
+}
+function lose(n) { S.xp -= n; normalize(); }
+function flash(text) {
+  const f = document.getElementById('flash');
+  document.getElementById('flashText').textContent = text;
+  f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');
+}
+function rankOf(l) { return l >= 30 ? 'S' : l >= 20 ? 'A' : l >= 15 ? 'B' : l >= 10 ? 'C' : l >= 5 ? 'D' : 'E'; }
+const TITLES = { E:'Lowest of the low', D:'Hunter in training', C:'Proven hunter', B:'Elite hunter', A:'National-level hunter', S:'Shadow monarch in the making' };
+
+function keyOf(exId, i) { return S.week + '|' + exId + '|' + i; }
+function upper(reps) { const n = reps.match(/\d+/g); return n ? +n[n.length - 1] : 0; }
+function e1rm(wt, reps) { return wt * (1 + reps / 30); }
+function bestE1RM(lift) {
+  let best = 0;
+  Object.keys(S.sets).forEach(k => {
+    const s = S.sets[k];
+    const ex = EX[s.ex];
+    if (ex && ex.lift === lift && s.reps <= 12) best = Math.max(best, e1rm(s.wt, s.reps));
+  });
+  return best;
+}
+function lastSetFor(exId) {
+  let best = null;
+  Object.keys(S.sets).forEach(k => {
+    const s = S.sets[k];
+    if (s.ex === exId && (!best || s.ts > best.ts)) best = s;
+  });
+  return best;
+}
+function dayComplete(day) {
+  return DAYS[day].ex.every(e => {
+    for (let i = 0; i < e.sets; i++) if (!S.sets[S.week + '|' + e.id + '|' + i]) return false;
+    return true;
+  });
+}
+
+function addSet(exId, i, wt, reps, rpe) {
+  const ex = EX[exId];
+  const prev = ex.lift ? bestE1RM(ex.lift) : 0;
+  S.sets[keyOf(exId, i)] = { ex: exId, wt, reps, rpe, ts: Date.now() };
+  gain(SET_XP);
+  if (ex.lift) {
+    const now = bestE1RM(ex.lift);
+    if (prev > 0 && now > prev + 0.5) { gain(PR_XP); flash('NEW PR'); }
+  }
+  const awardKey = S.week + '|' + ex.day;
+  if (dayComplete(ex.day) && !S.awards[awardKey]) {
+    S.awards[awardKey] = true;
+    gain(DAY_XP);
+    flash('SESSION CLEARED');
+  }
+  save(); render();
+}
+function undoSet(key) {
+  if (!S.sets[key]) return;
+  delete S.sets[key];
+  lose(SET_XP);
+  save(); render();
+}
+
+function render() {
+  const r = rankOf(S.level);
+  document.getElementById('rank').textContent = r;
+  document.getElementById('rankTitle').textContent = TITLES[r];
+  document.getElementById('level').textContent = S.level;
+  document.getElementById('fill').style.width = Math.min(100, (S.xp / need()) * 100) + '%';
+  document.getElementById('xpText').textContent = S.xp + ' / ' + need();
+  document.getElementById('weekNum').textContent = S.week;
+
+  document.getElementById('tabs').innerHTML = DAY_ORDER.map(d =>
+    '<button class="tab' + (d === S.day ? ' on' : '') + '" data-day="' + d + '">' + d + '</button>').join('');
+
+  document.getElementById('deloadBox').innerHTML = S.week % 5 === 0
+    ? '<div class="deload">Deload week. Take about half the sets, stay around RPE 5–6, and do not test maxes.</div>' : '';
+
+  const day = DAYS[S.day];
+  document.getElementById('dayName').textContent = S.day + ': ' + day.title;
+  document.getElementById('dayHint').textContent = day.hint;
+
+  document.getElementById('exercises').innerHTML = day.ex.map(e => {
+    const last = lastSetFor(e.id);
+    let lastHtml = '';
+    if (last) {
+      const hit = upper(e.reps) && last.reps >= upper(e.reps) && last.rpe <= 8 && e.lift;
+      lastHtml = '<div class="last">Last: <b>' + last.wt + ' × ' + last.reps + '</b> @ ' + last.rpe +
+        (hit ? ' <span class="hint">&rarr; top of range at RPE 8 or below. Add 5 lb next time.</span>' : '') + '</div>';
+    }
+    let rows = '';
+    for (let i = 0; i < e.sets; i++) {
+      const s = S.sets[keyOf(e.id, i)];
+      if (s) {
+        rows += '<div class="set done"><span>Set ' + (i + 1) + '</span><span>' + s.wt + ' × ' + s.reps + ' @ ' + s.rpe + '</span>' +
+          '<button class="btn sm red" data-undo="' + keyOf(e.id, i) + '">undo</button></div>';
+      } else {
+        rows += '<div class="set" data-ex="' + e.id + '" data-i="' + i + '">' +
+          '<span class="lab">Set ' + (i + 1) + '</span>' +
+          '<input name="wt" type="number" inputmode="decimal" placeholder="lb">' +
+          '<input name="reps" type="number" inputmode="numeric" placeholder="reps">' +
+          '<input name="rpe" type="number" inputmode="decimal" placeholder="RPE" step="0.5" min="1" max="10">' +
+          '<button class="btn sm" data-log="1">Log</button></div>';
+      }
+    }
+    const tgtRpe = e.rpe ? ' @ RPE ' + e.rpe : '';
+    return '<div class="ex"><div class="exh"><span class="exn">' + e.name + '</span>' +
+      '<span class="tgt">' + e.sets + ' × ' + e.reps + tgtRpe + '</span></div>' +
+      (e.start ? '<div class="exm">Starting: ' + e.start + '</div>' : '') + (e.m ? '<div class="exm">' + MUSCLE_NAMES[e.m] + '</div>' : '') +
+      lastHtml + rows + '</div>';
+  }).join('');
+
+  document.getElementById('prs').innerHTML = Object.keys(LIFTS).map(l => {
+    const v = bestE1RM(l);
+    return '<div class="prow"><span>' + LIFTS[l] + '</span><span>' +
+      (v ? '<b>' + Math.round(v) + ' lb</b> <span class="muted">est. 1RM</span>' : '<span class="muted">no sets logged</span>') + '</span></div>';
+  }).join('');
+
+  const counts = {};
+  Object.keys(S.sets).forEach(k => {
+    if (k.indexOf(S.week + '|') !== 0) return;
+    const ex = EX[S.sets[k].ex];
+    if (ex && ex.m) counts[ex.m] = (counts[ex.m] || 0) + 1;
+  });
+  document.getElementById('volume').innerHTML = Object.keys(TARGETS).map(m => {
+    const [lo, hi] = TARGETS[m];
+    const c = counts[m] || 0;
+    const pct = Math.min(100, (c / hi) * 100);
+    return '<div class="vrow"><div class="vhead"><span>' + MUSCLE_NAMES[m] + '</span><span>' + c + ' / ' + lo + '–' + hi + ' sets</span></div>' +
+      '<div class="vbar"><div class="vfill' + (c >= lo ? ' ok' : '') + '" style="width:' + pct + '%"></div></div></div>';
+  }).join('');
+
+  const d = S.daily[today()] || {};
+  document.getElementById('protein').value = d.protein || '';
+  document.getElementById('creatine').checked = !!d.creatine;
+  document.getElementById('water').checked = !!d.water;
+}
+
+function setDaily(field, value) {
+  const t = today();
+  S.daily[t] = S.daily[t] || {};
+  S.daily[t][field] = value;
+  save();
+}
+
+document.addEventListener('click', e => {
+  const t = e.target;
+  if (t.dataset.day) { S.day = t.dataset.day; save(); render(); return; }
+  if (t.dataset.wk) {
+    S.week = Math.max(1, S.week + parseInt(t.dataset.wk, 10));
+    save(); render(); return;
+  }
+  if (t.dataset.undo) { undoSet(t.dataset.undo); return; }
+  if (t.dataset.log) {
+    const row = t.closest('.set');
+    const exId = row.dataset.ex, i = parseInt(row.dataset.i, 10);
+    const wt = parseFloat(row.querySelector('[name=wt]').value);
+    const reps = parseInt(row.querySelector('[name=reps]').value, 10);
+    const rpe = parseFloat(row.querySelector('[name=rpe]').value) || 0;
+    if (!wt || !reps) return;
+    addSet(exId, i, wt, reps, rpe);
+  }
+});
+
+document.getElementById('protein').addEventListener('change', e => setDaily('protein', parseInt(e.target.value, 10) || 0));
+document.getElementById('creatine').addEventListener('change', e => setDaily('creatine', e.target.checked));
+document.getElementById('water').addEventListener('change', e => setDaily('water', e.target.checked));
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (confirm('Reset all training data? This cannot be undone.')) { S = fresh(); save(); render(); }
+});
+
+function exportBackup() {
+  const blob = new Blob([JSON.stringify({ app: KEY, exported: new Date().toISOString(), data: S }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = KEY + '-backup-' + today() + '.json';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+function importBackup(file) {
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const obj = JSON.parse(r.result);
+      const d = obj.data || obj;
+      if (!d || typeof d !== 'object' || typeof d.level !== 'number' || typeof d.xp !== 'number') throw new Error('bad');
+      if (!confirm('Replace current progress with this backup?')) return;
+      S = Object.assign(fresh(), d);
+      save();
+      render();
+      alert('Backup imported.');
+    } catch (e) {
+      alert('That file is not a valid backup.');
+    }
+  };
+  r.readAsText(file);
+}
+document.getElementById('exportBtn').addEventListener('click', exportBackup);
+document.getElementById('importFile').addEventListener('change', e => {
+  if (e.target.files[0]) importBackup(e.target.files[0]);
+  e.target.value = '';
+});
+
+load();
+render();
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(() => {}); });
+}
+</script>
+</body>
+</html>
