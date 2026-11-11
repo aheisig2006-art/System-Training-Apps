@@ -2,17 +2,40 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SYSTEM</title>
-<style>
-body{background:#06070d;color:#e6ecff;font-family:system-ui,sans-serif;text-align:center;padding:40px 16px}
-h1{letter-spacing:.35em;color:#3fa9ff;font-size:14px;text-transform:uppercase}
-a{display:block;max-width:300px;margin:14px auto;padding:16px;border:1px solid #3fa9ff;border-radius:8px;color:#e6ecff;text-decoration:none;font-weight:600}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>THE SYSTEM</title>
+<meta name="description" content="Daily quests, training log and hunter level, synced across devices.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#06070d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="THE SYSTEM">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="app.css">
 </head>
 <body>
-<h1>[ System ]</h1>
-<a href="quests/">Daily Quests</a>
-<a href="training/">Training Log</a>
+<div class="flash" id="flash"><div id="flashText">LEVEL UP</div></div>
+<div class="banner" id="banner" hidden></div>
+
+<div class="wrap">
+  <header class="panel" id="hunterPanel">
+    <h1>[ System ]</h1>
+    <div id="hunter"></div>
+  </header>
+
+  <nav class="tabs main" aria-label="Sections">
+    <button class="tab" data-view="quests">Quests</button>
+    <button class="tab" data-view="training">Training</button>
+    <button class="tab" data-view="profile">Profile</button>
+  </nav>
+
+  <main id="view"></main>
+</div>
+
+<div class="overlay" id="overlay" hidden></div>
+
+<noscript><p style="color:#e6ecff;text-align:center">THE SYSTEM needs JavaScript turned on.</p></noscript>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>
