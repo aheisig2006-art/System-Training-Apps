@@ -1,5 +1,5 @@
 import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
-  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, prIsStale, suggestWeight } from './engine.js';
+  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, prIsStale, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './store.js';
@@ -71,7 +71,82 @@ function flash(text, big) {
 function refresh() {
   today = dateKey();
   game = compute(store, today);
+  if (syncState !== 'loading' && applyPotionGrants()) game = compute(store, today);
   render();
+}
+
+// ---------- potions ----------
+// Writes whatever is owed (a cleared day, a level, a rank) and rolls each drop's type once.
+function applyPotionGrants() {
+  const res = potionGrants(store, game, today);
+  const now = Date.now();
+  const writes = [];
+  if (res.setup) {
+    writes.push([['profile', 'potionsFrom'], { v: res.setup, at: now }], [['profile', 'potionLevel'], { v: res.level, at: now }]);
+  } else {
+    let stock = potionStock(store).length;
+    res.grants.forEach(id => {
+      const wasted = stock >= POTION_CAP;
+      if (!wasted) stock++;
+      writes.push([['profile', 'potion:' + id], { type: rollPotion(), wasted, at: now }]);
+    });
+    if (res.level !== pv(store, 'potionLevel', null)) writes.push([['profile', 'potionLevel'], { v: res.level, at: now }]);
+  }
+  let changed = false;
+  writes.forEach(([path, leaf]) => { if (putLeaf(store, path, leaf)) { changed = true; if (sync) sync.push(path, leaf); } });
+  if (changed) saveStore(store);
+  return changed;
+}
+function usePotion(id) {
+  const p = (store.profile || {})['potion:' + id];
+  if (!p || p.wasted || p.used) return;
+  const used = { day: today, at: Date.now() };
+  if (p.type === 'clear') {
+    const sel = document.querySelector('[data-potion-quest="' + id + '"]');
+    if (!sel || !sel.value || sel.value === 'workout') return;
+    used.quest = sel.value;
+  } else if (p.type === 'setbreak') {
+    const sel = document.querySelector('[data-potion-set="' + id + '"]');
+    if (!sel || !sel.value) return;
+    used.set = sel.value;
+  }
+  commit(['profile', 'potion:' + id], { ...p, used, at: Date.now() });
+}
+function renderPotions() {
+  const fx = potionEffects(store);
+  const stock = potionStock(store);
+  const quests = questsFor(store, today).filter(q => q.id !== 'workout' && !isChecked(store, today, q.id));
+  const wk = +pv(store, 'week', 1);
+  const day = dayName(today);
+  const prog = getProgram(store);
+  const sets = [];
+  if (prog.DAY_ORDER.includes(day)) {
+    prog.DAYS[day].ex.forEach(e => {
+      if (isSkipped(store, wk, e.id)) return;
+      for (let i = 0; i < plannedSets(store, e, wk, day); i++) {
+        const key = wk + '|' + e.id + '|' + i;
+        if (!setAt(store, wk, e.id, i) && !fx.breaks.has(key)) sets.push({ key, label: e.name + ', set ' + (i + 1) });
+      }
+    });
+  }
+  const rows = stock.map(p => {
+    const def = POTIONS[p.type];
+    let control;
+    if (p.type === 'clear') control = quests.length
+      ? '<select data-potion-quest="' + esc(p.id) + '">' + quests.map(q => '<option value="' + esc(q.id) + '">' + esc(q.name) + '</option>').join('') + '</select> <button class="btn xs" data-action="potion-use" data-id="' + esc(p.id) + '">Use</button>'
+      : '<span class="note">No quests left to clear today.</span>';
+    else if (p.type === 'setbreak') control = sets.length
+      ? '<select data-potion-set="' + esc(p.id) + '">' + sets.map(s => '<option value="' + esc(s.key) + '">' + esc(s.label) + '</option>').join('') + '</select> <button class="btn xs" data-action="potion-use" data-id="' + esc(p.id) + '">Use</button>'
+      : '<span class="note">No unlogged sets left today.</span>';
+    else control = '<button class="btn xs" data-action="potion-use" data-id="' + esc(p.id) + '">Use: +' + def.xp + ' XP</button>';
+    return '<div class="prow"><span>' + esc(def.name) + (def.xp ? ' <span class="muted">+' + def.xp + ' XP</span>' : '') + '</span>' + control + '</div>';
+  }).join('');
+  const usedToday = Object.keys(potionRecs(store)).map(id => potionRecs(store)[id])
+    .filter(p => p && !p.wasted && p.used && p.used.day === today)
+    .map(p => '<p class="note">Used today: ' + esc(POTIONS[p.type].name) + (p.used.quest ? ' on a quest' : '') + (p.used.set ? ' on a set' : '') + (POTIONS[p.type].xp ? ' (+' + POTIONS[p.type].xp + ' XP)' : '') + '.</p>').join('');
+  return '<div class="panel"><h1>Potions · ' + stock.length + ' / ' + POTION_CAP + '</h1>' +
+    '<p class="note">Earned: one per cleared day, one per level, two per rank-up. Drops are random. You can hold ' + POTION_CAP + '. They only work on today.</p>' +
+    (rows || '<p class="note">None yet.</p>') + usedToday + '</div>';
 }
 
 // ---------- rendering ----------
@@ -124,10 +199,11 @@ function renderQuests() {
   let lastGroup = null;
   dayQuests.forEach(q => {
     const d = isChecked(store, today, q.id);
+    const viaPotion = potionClears(store, today).has(q.id);
     if ((q.group || 'Daily') !== lastGroup) { lastGroup = q.group || 'Daily'; html += '<div class="qgroup">' + esc(lastGroup) + '</div>'; }
-    html += '<button class="quest' + (d ? ' done' : '') + '" data-action="quest" data-id="' + esc(q.id) + '" aria-pressed="' + d + '">' +
+    html += '<button class="quest' + (d ? ' done' : '') + '" data-action="quest" data-id="' + esc(q.id) + '" aria-pressed="' + d + '"' + (viaPotion ? ' disabled' : '') + '>' +
       '<span class="box">' + (d ? '&#10003;' : '') + '</span>' +
-      '<span class="qt"><span class="n">' + esc(q.name) + '</span><span class="d">' + esc(questDesc(q)) + '</span></span>' +
+      '<span class="qt"><span class="n">' + esc(q.name) + '</span><span class="d">' + esc(viaPotion ? 'Cleared by a Clear potion.' : questDesc(q)) + '</span></span>' +
       '<span class="xp">+' + q.xp + ' XP</span></button>';
   });
   const doneCount = dayQuests.filter(q => t.doneIds.includes(q.id)).length;
@@ -135,6 +211,7 @@ function renderQuests() {
     (t.allDone ? 'Day cleared: +' + RULES.BONUS_XP + ' XP' : 'Clear all for +' + RULES.BONUS_XP + ' XP') + '</span></div>' +
     '<p class="note" style="margin-top:8px">Every ' + RULES.STREAK_EVERY + ' cleared days in a row: +' + RULES.STREAK_BONUS + ' XP.</p></div>';
 
+  html += renderPotions();
   const recent = game.log.slice(-14);
   if (recent.length > 1) {
     html += '<div class="panel"><h1>Record</h1><div class="days">' + recent.map(r =>
@@ -254,7 +331,7 @@ function renderTraining() {
     let rows = '';
     if (skipped) rows = '<p class="note skipnote">Skipped today. Doesn\'t block the session clear.</p>';
     else {
-      for (let i = 0; i < nSets; i++) rows += setRow(e, week, i, 'Set ' + (i + 1));
+      for (let i = 0; i < nSets; i++) rows += potionEffects(store).breaks.has(String(week) + '|' + e.id + '|' + i) ? '<div class="set done"><span>Set ' + (i + 1) + '</span><span>Removed by a Set Break potion</span></div>' : setRow(e, week, i, 'Set ' + (i + 1));
       if (pr) {
         const best = bestE1RM(e.lift);
         rows += '<div class="prbox"><b>PR attempt.</b> Warm up, then work up to one heavy single.' +
@@ -756,7 +833,8 @@ document.addEventListener('click', async e => {
   const a = t.dataset.action, now = Date.now();
   const week = String(pv(store, 'week', 1));
   switch (a) {
-    case 'quest': commit(['days', today, 'checks', t.dataset.id], { done: !isChecked(store, today, t.dataset.id), at: now }); break;
+    case 'quest': if (!potionClears(store, today).has(t.dataset.id)) commit(['days', today, 'checks', t.dataset.id], { done: !isChecked(store, today, t.dataset.id), at: now }); break;
+    case 'potion-use': usePotion(t.dataset.id); break;
     case 'penalty': commit(['days', today, 'penaltyClear'], { on: true, at: now }); break;
     case 'rest': {
       const msg = game.restCostToday ? 'Take an extra rest day? It costs ' + RULES.EXTRA_REST_XP + ' XP. All quests are excused and your streak is kept.' : 'Use your free rest day for this week? All quests are excused and your streak is kept.';

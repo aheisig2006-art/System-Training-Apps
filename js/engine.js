@@ -66,7 +66,8 @@ export function questsFor(store, key) {
 export function dayRec(store, key) { return (store.days && store.days[key]) || {}; }
 export function isChecked(store, key, qid) {
   const c = dayRec(store, key).checks;
-  return !!(c && c[qid] && c[qid].done);
+  if (c && c[qid] && c[qid].done) return true;
+  return potionClears(store, key).has(qid);
 }
 export function liveSets(store) {
   const out = [];
@@ -138,6 +139,7 @@ export function trainingEvents(store) {
   const sets = liveSets(store).sort((a, b) => a.ts - b.ts);
   const events = [];
   const best = {};
+  const fx = potionEffects(store);
   sets.forEach(s => {
     events.push({ ts: s.ts, xp: RULES.SET_XP, kind: 'set' });
     const lift = liftOf(s, EX);
@@ -156,7 +158,10 @@ export function trainingEvents(store) {
         if (isSkipped(store, w, e.id)) return;
         for (let i = 0; i < plannedSets(store, e, w, d); i++) {
           const s = setAt(store, w, e.id, i);
-          if (!s) ok = false; else { last = Math.max(last, s.ts); logged++; }
+          const br = fx.breaks.get(w + '|' + e.id + '|' + i);
+          if (s) { last = Math.max(last, s.ts); logged++; }
+          else if (br) last = Math.max(last, br);   // removed by a Set Break potion
+          else ok = false;
         }
       });
       if (!logged) ok = false;
@@ -166,6 +171,68 @@ export function trainingEvents(store) {
   return events;
 }
 
+// ---------- potions ----------
+// Stored as profile records named potion:<id>, so they sync with everything else.
+// A potion's type is rolled once, when it is granted, and kept with the record.
+export const POTIONS = {
+  minor:    { name: 'Minor potion', xp: 25 },
+  major:    { name: 'Major potion', xp: 50 },
+  clear:    { name: 'Clear potion' },
+  setbreak: { name: 'Set Break potion' }
+};
+const POTION_ODDS = [['minor', 35], ['major', 25], ['clear', 20], ['setbreak', 20]];
+export const POTION_CAP = 3;
+export const RANK_LEVELS = [5, 10, 15, 20, 30];
+export function rollPotion(r = Math.random()) {
+  let x = r * 100;
+  for (const [type, w] of POTION_ODDS) { x -= w; if (x < 0) return type; }
+  return POTION_ODDS[POTION_ODDS.length - 1][0];
+}
+export function potionRecs(store) {
+  const out = {};
+  Object.keys(store.profile || {}).forEach(k => {
+    if (k.indexOf('potion:') === 0 && store.profile[k]) out[k.slice(7)] = store.profile[k];
+  });
+  return out;
+}
+export function potionStock(store) {
+  const recs = potionRecs(store);
+  return Object.keys(recs).map(id => ({ id, ...recs[id] })).filter(p => !p.wasted && !p.used);
+}
+// What the potions already used have done: XP by day, quests cleared by day, sets removed (with the time).
+export function potionEffects(store) {
+  const xpByDay = {}, clears = {}, breaks = new Map();
+  const recs = potionRecs(store);
+  Object.keys(recs).forEach(id => {
+    const p = recs[id];
+    if (!p || p.wasted || !p.used) return;
+    const u = p.used, def = POTIONS[p.type] || {};
+    if (def.xp) xpByDay[u.day] = (xpByDay[u.day] || 0) + def.xp;
+    if (u.quest) (clears[u.day] = clears[u.day] || new Set()).add(u.quest);
+    if (u.set) breaks.set(u.set, u.at);
+  });
+  return { xpByDay, clears, breaks };
+}
+export function potionClears(store, key) { return potionEffects(store).clears[key] || new Set(); }
+// What is owed since the last check: one per cleared day (from the start of potions on),
+// one per new level, two per rank-up. Fixed ids mean nothing is granted twice.
+export function potionGrants(store, g, today) {
+  const from = pv(store, 'potionsFrom', null);
+  if (!from) return { setup: today, grants: [], level: g.level };
+  const have = potionRecs(store);
+  const grants = [];
+  g.log.forEach(e => {
+    const id = 'day:' + e.date;
+    if (e.status === 'cleared' && e.date >= from && !have[id]) grants.push(id);
+  });
+  const prev = pv(store, 'potionLevel', g.level);
+  for (let L = prev + 1; L <= g.level; L++) {
+    grants.push('lvl:' + L);
+    if (RANK_LEVELS.includes(L)) grants.push('rank:' + L + ':1', 'rank:' + L + ':2');
+  }
+  return { setup: null, grants, level: Math.max(prev, g.level) };
+}
+
 // ---------- the whole game state ----------
 export function compute(store, today = dateKey(), now = Date.now()) {
   const restart = pv(store, 'restart', null);              // {date, ts}
@@ -173,6 +240,7 @@ export function compute(store, today = dateKey(), now = Date.now()) {
   const startTs = restart ? restart.ts : pv(store, 'startTs', 0);
   const base = restart ? { xp: 0, streak: 0, days: 0, penalty: false } : pv(store, 'baseline', { xp: 0, streak: 0, days: 0, penalty: false });
 
+  const fx = potionEffects(store);
   // training XP grouped by local day, only after the starting point
   const tByDay = {};
   trainingEvents(store).forEach(ev => {
@@ -211,7 +279,7 @@ export function compute(store, today = dateKey(), now = Date.now()) {
     else if (d === startDate) status = 'grace';   // the first day never costs anything
     else status = 'missed';
 
-    let delta = getQuests(store).filter(q => doneIds.includes(q.id)).reduce((a, q) => a + q.xp, 0) + (tByDay[d] || 0);
+    let delta = getQuests(store).filter(q => doneIds.includes(q.id)).reduce((a, q) => a + q.xp, 0) + (tByDay[d] || 0) + (fx.xpByDay[d] || 0);
     let streakBonus = false;
     if (status === 'cleared') {
       delta += RULES.BONUS_XP;
