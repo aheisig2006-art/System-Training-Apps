@@ -153,15 +153,17 @@ export const LANDMARKS = { chest: [8, 20], back: [10, 22], shoulders: [8, 22], b
 export const MUSCLE_LABELS = { chest: 'Chest', back: 'Back', shoulders: 'Shoulders', biceps: 'Biceps', triceps: 'Triceps', quads: 'Quads', hams: 'Hamstrings', glutes: 'Glutes', calves: 'Calves', core: 'Core' };
 
 export const QUEST_PRESETS = [
-  { id: 'workout', name: 'Work out', desc: "Complete today's training session.", xp: 100, trainingOnly: true, on: true },
-  { id: 'pushups', name: '100 push-ups', desc: 'Can be split across the day.', xp: 60, on: false },
-  { id: 'water', name: 'Drink 64 oz of water', desc: 'About 2 liters.', xp: 20, on: true },
-  { id: 'protein', name: 'Hit your protein target', desc: 'Roughly 0.7–1 g per lb of bodyweight.', xp: 40, on: true },
-  { id: 'steps', name: 'Walk 8,000 steps', desc: 'Any walking counts.', xp: 40, on: true },
-  { id: 'read', name: 'Read 10 pages', desc: 'Pages, not minutes.', xp: 40, on: false },
-  { id: 'mobility', name: '10 minutes of mobility', desc: 'Stretching or mobility work.', xp: 30, on: false },
-  { id: 'sleep', name: 'In bed on time', desc: 'Your own target bedtime.', xp: 30, on: false }
+  { id: 'workout', name: 'Work out', desc: "Complete today's training session.", xp: 100, trainingOnly: true, on: true, group: 'Daily' },
+  { id: 'pushups', name: '100 push-ups', desc: 'Can be split across the day.', xp: 60, on: false, group: 'Daily' },
+  { id: 'steps', name: 'Walk 8,000 steps', desc: 'Check it off when you hit it.', xp: 40, on: true, group: 'Daily' },
+  { id: 'read', name: 'Read 10 pages', desc: 'Pages, not minutes.', xp: 40, on: false, group: 'Daily' },
+  { id: 'mobility', name: '10 minutes of mobility', desc: 'Stretching or mobility work.', xp: 30, on: false, group: 'Daily' },
+  { id: 'sleep', name: 'In bed on time', desc: 'Your own target bedtime.', xp: 30, on: false, group: 'Daily' },
+  { id: 'protein', name: 'Hit your protein target', desc: 'Roughly 0.7–1 g per lb of bodyweight.', xp: 10, on: true, group: 'Nutrition' },
+  { id: 'creatine', name: 'Take creatine (5 g)', desc: 'Daily dose taken.', xp: 8, on: true, group: 'Nutrition' },
+  { id: 'water', name: 'Drink 24 oz of water', desc: 'One full bottle.', xp: 5, on: true, group: 'Nutrition' }
 ];
+
 
 // ---------- split templates (pattern lists; * marks a main lift) ----------
 const T = {

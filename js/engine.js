@@ -4,12 +4,16 @@
 import { EX as DEFAULT_EX, getProgram, setsFor } from './program.js';
 
 export const QUESTS = [
-  { id: 'read',    name: 'Read 10 pages',             desc: 'Pages, not minutes.',                       xp: 40 },
-  { id: 'workout', name: 'Work out',                  desc: 'Full session.',                             xp: 100 },
-  { id: 'water',   name: 'Drink 24 oz of water',      desc: 'One full bottle.',                          xp: 20 },
-  { id: 'pushups', name: '100 push-ups',              desc: 'Can be split across the day.',              xp: 60 },
-  { id: 'protein', name: 'Hit protein + supplements', desc: 'Protein target met, creatine and supplements taken.', xp: 40 }
+  { id: 'read',     name: 'Read 10 pages',           desc: 'Pages, not minutes.',           xp: 40,  group: 'Daily' },
+  { id: 'workout',  name: 'Work out',                desc: 'Full session.',                 xp: 100, group: 'Daily' },
+  { id: 'pushups',  name: '100 push-ups',            desc: 'Can be split across the day.',  xp: 60,  group: 'Daily' },
+  { id: 'steps',    name: 'Walk 8,000 steps',        desc: 'Check it off when you hit it.', xp: 40,  group: 'Daily' },
+  { id: 'protein',  name: 'Hit your protein target', desc: 'Protein target met.',           xp: 10,  group: 'Nutrition' },
+  { id: 'creatine', name: 'Take creatine (5 g)',     desc: 'Daily dose taken.',             xp: 8,   group: 'Nutrition' },
+  { id: 'water',    name: 'Drink 24 oz of water',    desc: 'One full bottle.',              xp: 5,   group: 'Nutrition' }
 ];
+// Always on for every player, even if their saved list predates them.
+export const MANDATORY_QUESTS = ['protein', 'creatine', 'water'];
 export const RULES = {
   BONUS_XP: 100,        // all quests cleared in a day
   MISSED_XP: 20,        // per missed (ghosted) weekday or unrested day
@@ -46,8 +50,13 @@ export function pv(store, field, dflt) {
   return leaf && leaf.v !== undefined ? leaf.v : dflt;
 }
 export function getQuests(store) {
-  const q = pv(store, 'quests', null);
-  return Array.isArray(q) && q.length ? q : QUESTS;
+  const stored = pv(store, 'quests', null);
+  if (!Array.isArray(stored) || !stored.length) return QUESTS;
+  const byId = Object.fromEntries(QUESTS.map(q => [q.id, q]));
+  const have = new Set(stored.map(q => q.id));
+  const merged = stored.map(q => byId[q.id] ? { ...q, ...byId[q.id] } : q);
+  MANDATORY_QUESTS.forEach(id => { if (!have.has(id)) merged.push(byId[id]); });
+  return merged;
 }
 // Quests that count on a given day ("Work out" only on training days for generated plans).
 export function questsFor(store, key) {

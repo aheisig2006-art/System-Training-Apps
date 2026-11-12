@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.4.0';
+export const APP_VERSION = '2.5.0';
 export const WHATS_NEW = {
+  '2.5.0': 'Protein (10 XP), creatine (8 XP) and water (5 XP) are back as their own Nutrition quests. Daily Quests are grouped by category. Walk 8,000 steps is a check-off goal.',
   '2.4.0': 'Body and PRs at signup and in Profile: suggested loads come from your PRs and logged sets. Add or remove a set on any exercise. Squat and deadlift now split evenly, and hip thrust is out.',
   '2.3.0': 'Cycle tracking now lives at the top of the Training tab: log your period, see your cycle day, the no-max window and your history.',
   '2.2.0': 'Bring your own program: type it, paste it or upload a PDF. Edit any plan from Profile → Your Plan.',

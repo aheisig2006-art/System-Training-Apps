@@ -121,8 +121,10 @@ function renderQuests() {
     html += '<p class="note">No training scheduled today, so "Work out" is off the list.</p>';
   }
   const dayQuests = questsFor(store, today);
+  let lastGroup = null;
   dayQuests.forEach(q => {
     const d = isChecked(store, today, q.id);
+    if ((q.group || 'Daily') !== lastGroup) { lastGroup = q.group || 'Daily'; html += '<div class="qgroup">' + esc(lastGroup) + '</div>'; }
     html += '<button class="quest' + (d ? ' done' : '') + '" data-action="quest" data-id="' + esc(q.id) + '" aria-pressed="' + d + '">' +
       '<span class="box">' + (d ? '&#10003;' : '') + '</span>' +
       '<span class="qt"><span class="n">' + esc(q.name) + '</span><span class="d">' + esc(questDesc(q)) + '</span></span>' +

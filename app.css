@@ -224,3 +224,5 @@ pre.example{text-align:left;background:#06070d;border:1px dashed #2a3368;border-
 .bodyform .prline.one{grid-template-columns:1.1fr 1fr}
 .bodyform .prline > span:first-child{font-size:13px}
 .bodyform .prnote{font-size:12px;margin:-2px 0 6px}
+
+.qgroup{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted,#7d88b0);margin:12px 0 6px}
