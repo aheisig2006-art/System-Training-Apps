@@ -7,6 +7,7 @@ import { CHARACTERS, characterArt } from './characters.js';
 import { parseProgram, pdfToText, makeExercise, refreshTargets, ALL_DAYS } from './importer.js';
 import { APP_VERSION, WHATS_NEW } from './version.js';
 import { track, setView, setSender, flush } from './track.js';
+import { rirText, rirInText, rpeFromRirText, effortTag } from './effort.js';
 import { isOwner } from './owner.js';
 
 let { store } = loadStore();
@@ -273,7 +274,7 @@ function cycleHtml(ci) {
     strip += '<span class="cd ' + cls + (d === Math.min(ci.day, L) ? ' today' : '') + '" title="Day ' + d + '"></span>';
   }
   const msg = ci.noMax
-    ? '<div class="cycwarn">Heads up: no-max-effort window. Keep top sets at RPE 8 or below and save PR attempts. Heavy work is back on from <b>' + prettyDate(ci.heavyFrom) + '</b>. Your call: nothing is blocked.</div>'
+    ? '<div class="cycwarn">Heads up: no-max-effort window. Keep top sets at RIR 2 or more and save PR attempts. Heavy work is back on from <b>' + prettyDate(ci.heavyFrom) + '</b>. Your call: nothing is blocked.</div>'
     : '<div class="cycgo">' + (ci.phase === 'Strong window' ? 'Green light: a good window for heavy work and PR attempts.' : 'Heavy work is fine.') + ' The next no-max window starts around <b>' + prettyDate(ci.noMaxFrom) + '</b>.</div>';
   let details = '';
   if (cycDetails) {
@@ -306,8 +307,8 @@ function renderTraining() {
     '<div class="weekrow">Week <b>' + week + '</b> <button class="btn sm" data-action="week" data-d="-1" aria-label="Previous week">−</button> <button class="btn sm" data-action="week" data-d="1" aria-label="Next week">+</button></div>' +
     (prog.generated ? '<p class="note">Block week ' + bw + ' of 5 · ' + (bw === 5 ? 'deload' : bw === 4 ? 'peak week: hardest effort' : 'building: sets and effort rise each week') + '</p>' : '') +
     '<div class="tabs">' + prog.DAY_ORDER.map(d => '<button class="tab' + (d === trainDay ? ' on' : '') + '" data-action="tday" data-d="' + d + '">' + d + '</button>').join('') + '</div>' +
-    (deload ? '<div class="deload">Deload week. Take about half the sets, stay around RPE 5–6, and do not test maxes.</div>' : '') +
-    '<div class="dayname">' + trainDay + ': ' + esc(day.title) + '</div><div class="dayhint">' + esc(day.hint) + '</div>' +
+    (deload ? '<div class="deload">Deload week. Take about half the sets, stay around RIR 4–5, and do not test maxes.</div>' : '') +
+    '<div class="dayname">' + trainDay + ': ' + esc(day.title) + '</div><div class="dayhint">' + esc(rirInText(day.hint)) + '</div>' +
     '<div class="daytools"><button class="btn sm' + (low ? ' on' : '') + '" data-action="low" aria-pressed="' + low + '">' + (low ? '✓ Low-recovery day' : 'Low-recovery day') + '</button>' +
     '<span class="note">' + (low ? 'Sets cut by a third. The session still counts.' : 'Slept badly or still sore? Cuts every exercise to about 2/3 of the sets.') + '</span></div>' +
     '<p class="note">Skips used today: ' + used + ' / ' + MAX_SKIPS + '</p>';
@@ -322,8 +323,8 @@ function renderTraining() {
     let lastHtml = '';
     if (last && !skipped) {
       const hit = upper(e.reps) && last.reps >= upper(e.reps) && last.rpe <= 8 && e.lift;
-      lastHtml = '<div class="last">Last: <b>' + (last.wt > 0 ? last.wt + ' × ' : 'BW × ') + last.reps + '</b> @ ' + last.rpe +
-        (hit ? ' <span class="hint">&rarr; top of range at RPE 8 or below. Add 5 lb next time.</span>' : '') + '</div>';
+      lastHtml = '<div class="last">Last: <b>' + (last.wt > 0 ? last.wt + ' × ' : 'BW × ') + last.reps + '</b>' + effortTag(last.rpe) +
+        (hit ? ' <span class="hint">&rarr; top of range at RIR 2 or more. Add 5 lb next time.</span>' : '') + '</div>';
     }
     const skippable = canSkip(day, e);
     const base = e.baseSets || e.sets;
@@ -352,8 +353,8 @@ function renderTraining() {
           setRow(e, week, 'pr', 'PR') + '</div>';
       }
     }
-    const heavyNote = (ci.on && ci.noMax && e.lift && !skipped && !pr) ? '<div class="cycnote">Cycle window: keep the top set at RPE 8 or below today.</div>' : '';
-    html += '<div class="ex' + (skipped ? ' skipped' : '') + '"><div class="exh"><span class="exn">' + esc(e.name) + '</span><span class="tgt">' + nSets + ' × ' + esc(e.reps) + (rpe ? ' @ RPE ' + rpe : '') + '</span></div>' +
+    const heavyNote = (ci.on && ci.noMax && e.lift && !skipped && !pr) ? '<div class="cycnote">Cycle window: keep the top set at RIR 2 or more today.</div>' : '';
+    html += '<div class="ex' + (skipped ? ' skipped' : '') + '"><div class="exh"><span class="exn">' + esc(rirInText(e.name)) + '</span><span class="tgt">' + nSets + ' × ' + esc(e.reps) + (rpe ? ' @ RIR ' + rirText(rpe) : '') + '</span></div>' +
       (e.swappedFrom ? '<div class="exm">Swapped from ' + esc(e.swappedFrom) + '</div>' : '') +
       loadLine +
       (e.m ? '<div class="exm">' + esc(prog.NAMES[e.m] || e.m) + (e.focus ? ' · focus' : '') + (e.bw ? ' · bodyweight' : '') + '</div>' : '') +
@@ -385,11 +386,11 @@ function renderTraining() {
 }
 function setRow(e, week, i, label) {
   const s = setAt(store, week, e.id, i);
-  if (s) return '<div class="set done"><span>' + label + '</span><span>' + (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps + ' @ ' + s.rpe + '</span><button class="btn sm red" data-action="undo" data-ex="' + e.id + '" data-i="' + i + '">undo</button></div>';
+  if (s) return '<div class="set done"><span>' + label + '</span><span>' + (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps + effortTag(s.rpe) + '</span><button class="btn sm red" data-action="undo" data-ex="' + e.id + '" data-i="' + i + '">undo</button></div>';
   return '<div class="set" data-ex="' + e.id + '" data-i="' + i + '"><span class="lab">' + label + '</span>' +
     '<input name="wt" type="number" inputmode="decimal" placeholder="' + (e.bw ? '+lb' : (suggestedLoad(e, week) || 'lb')) + '" aria-label="' + (e.bw ? 'Added weight (optional)' : 'Weight') + ', ' + label + '">' +
     '<input name="reps" type="number" inputmode="numeric" placeholder="reps" aria-label="Reps, ' + label + '">' +
-    '<input name="rpe" type="number" inputmode="decimal" placeholder="RPE" step="0.5" min="1" max="10" aria-label="RPE, ' + label + '">' +
+    '<input name="rpe" type="number" inputmode="decimal" placeholder="RIR" step="0.5" min="0" max="10" aria-label="Reps in reserve, ' + label + '">' +
     '<button class="btn sm" data-action="log">Log</button></div>';
 }
 
@@ -677,7 +678,7 @@ function editorBody() {
           '<input class="edname" data-ed="name" data-d="' + di + '" data-e="' + ei + '" value="' + esc(e.name) + '" aria-label="Exercise">' +
           '<div class="ednums"><input data-ed="sets" data-d="' + di + '" data-e="' + ei + '" type="number" min="1" max="12" value="' + e.sets + '" aria-label="Sets"><span>×</span>' +
           '<input data-ed="reps" data-d="' + di + '" data-e="' + ei + '" value="' + esc(e.reps) + '" aria-label="Reps"><span>@</span>' +
-          '<input data-ed="rpe" data-d="' + di + '" data-e="' + ei + '" value="' + esc(e.rpe) + '" aria-label="RPE">' +
+          '<input data-ed="rpe" data-d="' + di + '" data-e="' + ei + '" value="' + esc(rirText(e.rpe)) + '" aria-label="RIR">' +
           '<button class="btn xs" data-action="edup" data-d="' + di + '" data-e="' + ei + '" aria-label="Move up"' + (ei ? '' : ' disabled') + '>↑</button>' +
           '<button class="btn xs red" data-action="edrmex" data-d="' + di + '" data-e="' + ei + '" aria-label="Remove exercise">✕</button></div></div>').join('') +
         '<button class="btn xs" data-action="edaddex" data-d="' + di + '">+ Add exercise</button></div>';
@@ -703,7 +704,7 @@ function syncEditorInputs() {
       const e = p.DAYS[dn].ex[+inp.dataset.e];
       if (!e) return;
       if (k === 'sets') e.sets = Math.max(1, Math.min(12, parseInt(inp.value, 10) || 1));
-      else e[k] = inp.value.trim();
+      else e[k] = k === 'rpe' ? rpeFromRirText(inp.value) : inp.value.trim();
       if (k !== 'name') delete e.guessed;
     }
   });
@@ -866,7 +867,8 @@ document.addEventListener('click', async e => {
       const exDef = getProgram(store).EX[row.dataset.ex] || {};
       const wt = parseFloat(row.querySelector('[name=wt]').value) || 0;
       const reps = parseInt(row.querySelector('[name=reps]').value, 10);
-      const rpe = parseFloat(row.querySelector('[name=rpe]').value) || 0;
+      const rirIn = parseFloat(row.querySelector('[name=rpe]').value);
+      const rpe = isFinite(rirIn) ? 10 - rirIn : 0;   // entered as RIR, stored as RPE
       if (!reps) { row.querySelector('[name=reps]').focus(); return; }
       if (!wt && !exDef.bw) { row.querySelector('[name=wt]').focus(); return; }
       const i = row.dataset.i;
