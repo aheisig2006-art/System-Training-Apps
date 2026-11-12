@@ -1,7 +1,7 @@
 // Pure game logic. Nothing here touches the page or storage: every total is
 // recalculated from the saved records, so two devices that hold the same
 // records always show the same XP, level and streak.
-import { DAYS, DAY_ORDER, EX } from './program.js';
+import { EX as DEFAULT_EX, getProgram, setsFor } from './program.js';
 
 export const QUESTS = [
   { id: 'read',    name: 'Read 10 pages',             desc: 'Pages, not minutes.',                       xp: 40 },
@@ -45,6 +45,15 @@ export function pv(store, field, dflt) {
   const leaf = store.profile && store.profile[field];
   return leaf && leaf.v !== undefined ? leaf.v : dflt;
 }
+export function getQuests(store) {
+  const q = pv(store, 'quests', null);
+  return Array.isArray(q) && q.length ? q : QUESTS;
+}
+// Quests that count on a given day ("Work out" only on training days for generated plans).
+export function questsFor(store, key) {
+  const prog = getProgram(store);
+  return getQuests(store).filter(q => !q.trainingOnly || prog.DAY_ORDER.includes(dayName(key)));
+}
 export function dayRec(store, key) { return (store.days && store.days[key]) || {}; }
 export function isChecked(store, key, qid) {
   const c = dayRec(store, key).checks;
@@ -57,7 +66,10 @@ export function liveSets(store) {
     const sets = weeks[w].sets || {};
     Object.keys(sets).forEach(k => {
       const s = sets[k];
-      if (s && !s.del) { const [ex, i] = k.split('|'); out.push({ week: +w, ex, i: +i, wt: s.wt, reps: s.reps, rpe: s.rpe, ts: s.ts }); }
+      if (s && !s.del) {
+        const [ex, i] = k.split('|');
+        out.push({ week: +w, ex, i: i === 'pr' ? 'pr' : +i, wt: s.wt, reps: s.reps, rpe: s.rpe, ts: s.ts, lift: s.lift, lib: s.lib });
+      }
     });
   });
   return out;
@@ -67,18 +79,38 @@ export function setAt(store, week, exId, i) {
   const s = w && w.sets && w.sets[exId + '|' + i];
   return s && !s.del ? s : null;
 }
+function flag(store, week, kind, key) {
+  const w = store.weeks && store.weeks[week];
+  const f = w && w[kind] && w[kind][key];
+  return !!(f && f.on);
+}
+export const isSkipped = (store, week, exId) => flag(store, week, 'skips', exId);
+export const isLowDay = (store, week, day) => flag(store, week, 'low', day);
+export const isPrAttempt = (store, week, exId) => flag(store, week, 'pr', exId);
+export const MAX_SKIPS = 2;
+// The main lift (or the first exercise of the day) can't be skipped.
+export function canSkip(day, e) { return !e.lift && day.ex[0] !== e; }
+export function skipsUsed(store, week, day) { return day.ex.filter(e => isSkipped(store, week, e.id)).length; }
+// Sets required today, after low-recovery mode.
+export function plannedSets(store, e, week, dayName) {
+  const n = setsFor(e, week);
+  return isLowDay(store, week, dayName) ? Math.max(1, Math.ceil(n * 2 / 3)) : n;
+}
+export function liftOf(s, EX) { return s.lift !== undefined ? s.lift : (EX[s.ex] && EX[s.ex].lift); }
 export const e1rm = (wt, reps) => wt * (1 + reps / 30);
 
 // Training XP events, each with a timestamp: sets, PRs (judged in the order they
 // were logged), and cleared sessions (dated by the set that completed them).
 export function trainingEvents(store) {
+  const prog = getProgram(store);
+  const EX = prog.EX;
   const sets = liveSets(store).sort((a, b) => a.ts - b.ts);
   const events = [];
   const best = {};
   sets.forEach(s => {
     events.push({ ts: s.ts, xp: RULES.SET_XP, kind: 'set' });
-    const lift = EX[s.ex] && EX[s.ex].lift;
-    if (lift && s.reps <= 12) {
+    const lift = liftOf(s, EX);
+    if (lift && s.reps <= 12 && s.wt > 0) {
       const v = e1rm(s.wt, s.reps);
       if ((best[lift] || 0) > 0 && v > best[lift] + 0.5) events.push({ ts: s.ts, xp: RULES.PR_XP, kind: 'pr' });
       best[lift] = Math.max(best[lift] || 0, v);
@@ -86,14 +118,17 @@ export function trainingEvents(store) {
   });
   const weeks = new Set(sets.map(s => s.week));
   weeks.forEach(w => {
-    DAY_ORDER.forEach(d => {
+    prog.DAY_ORDER.forEach(d => {
       let last = 0, ok = true;
-      DAYS[d].ex.forEach(e => {
-        for (let i = 0; i < e.sets; i++) {
+      let logged = 0;
+      prog.DAYS[d].ex.forEach(e => {
+        if (isSkipped(store, w, e.id)) return;
+        for (let i = 0; i < plannedSets(store, e, w, d); i++) {
           const s = setAt(store, w, e.id, i);
-          if (!s) ok = false; else last = Math.max(last, s.ts);
+          if (!s) ok = false; else { last = Math.max(last, s.ts); logged++; }
         }
       });
+      if (!logged) ok = false;
       if (ok) events.push({ ts: last, xp: RULES.SESSION_XP, kind: 'session', week: w, day: d });
     });
   });
@@ -125,8 +160,9 @@ export function compute(store, today = dateKey(), now = Date.now()) {
 
   for (let d = startDate; d <= today; d = addDays(d, 1)) {
     const rec = dayRec(store, d);
-    const doneIds = QUESTS.filter(q => isChecked(store, d, q.id)).map(q => q.id);
-    const allDone = doneIds.length === QUESTS.length;
+    const dayQuests = questsFor(store, d);
+    const doneIds = getQuests(store).filter(q => isChecked(store, d, q.id)).map(q => q.id);
+    const allDone = dayQuests.every(q => doneIds.includes(q.id));
     const declaredRest = !!(rec.rest && rec.rest.on) && !isWeekend(d);
     const wk = weekStart(d);
     let paidRest = false;
@@ -141,9 +177,10 @@ export function compute(store, today = dateKey(), now = Date.now()) {
     else if (allDone) status = 'cleared';
     else if (d === today) status = 'open';
     else if (isWeekend(d)) status = 'rest';
+    else if (d === startDate) status = 'grace';   // the first day never costs anything
     else status = 'missed';
 
-    let delta = QUESTS.filter(q => doneIds.includes(q.id)).reduce((a, q) => a + q.xp, 0) + (tByDay[d] || 0);
+    let delta = getQuests(store).filter(q => doneIds.includes(q.id)).reduce((a, q) => a + q.xp, 0) + (tByDay[d] || 0);
     let streakBonus = false;
     if (status === 'cleared') {
       delta += RULES.BONUS_XP;
@@ -163,13 +200,13 @@ export function compute(store, today = dateKey(), now = Date.now()) {
 
     if (d === today) {
       todayInfo = {
-        status, doneIds, allDone, declaredRest, paidRest,
+        status, doneIds, allDone, declaredRest, paidRest, questIds: dayQuests.map(q => q.id),
         weekend: isWeekend(d),
         restUsedThisWeek: (restsByWeek[wk] || 0) - (declaredRest ? 1 : 0)
       };
     }
   }
-  if (!todayInfo) todayInfo = { status: 'open', doneIds: [], allDone: false, declaredRest: false, paidRest: false, weekend: isWeekend(today), restUsedThisWeek: 0 };
+  if (!todayInfo) todayInfo = { status: 'open', questIds: questsFor(store, today).map(q => q.id), doneIds: [], allDone: false, declaredRest: false, paidRest: false, weekend: isWeekend(today), restUsedThisWeek: 0 };
 
   const lv = levelFromTotal(total);
   const failAck = pv(store, 'failAck', null);
@@ -223,7 +260,7 @@ export function migrateLegacy(questsOld, trainingOld, today = dateKey(), now = D
     Object.keys(sets).forEach(k => {
       const [w, ex, i] = k.split('|');
       const s = sets[k];
-      if (!s || !EX[ex]) return;
+      if (!s || !DEFAULT_EX[ex]) return;
       store.weeks[w] = store.weeks[w] || { sets: {} };
       store.weeks[w].sets[ex + '|' + i] = { ex, wt: s.wt, reps: s.reps, rpe: s.rpe || 0, ts: s.ts || at - 1, del: false, at };
     });
@@ -233,4 +270,35 @@ export function migrateLegacy(questsOld, trainingOld, today = dateKey(), now = D
   P('startTs', now);
   P('baseline', { xp: Math.max(0, questTotal + trainingTotal), streak, days, penalty });
   return store;
+}
+
+// ---------- cycle ----------
+// Period start dates are logged as days[date].period = {on, at}. Cycle length is
+// the average of the recent gaps (28 until there are two starts). The no-max
+// window runs from mid-PMS (about 5 days before the next period) through day 7.
+function diffDays(a, b) { return Math.round((parse(b) - parse(a)) / 864e5); }
+export function periodStarts(store) {
+  return Object.keys(store.days || {}).filter(d => store.days[d].period && store.days[d].period.on).sort();
+}
+export function cycleInfo(store, today = dateKey()) {
+  const starts = periodStarts(store).filter(d => d <= today);
+  const on = pv(store, 'cycle', starts.length > 0);
+  if (!on) return { on: false };
+  if (!starts.length) return { on: true, known: false };
+  const gaps = [];
+  for (let i = Math.max(1, starts.length - 6); i < starts.length; i++) {
+    const g = diffDays(starts[i - 1], starts[i]);
+    if (g >= 18 && g <= 45) gaps.push(g);
+  }
+  const length = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 28;
+  const last = starts[starts.length - 1];
+  const day = diffDays(last, today) + 1;
+  const nextStart = addDays(last, length);
+  const pmsFrom = length - 4;
+  let phase, noMax = false, heavyFrom = null;
+  if (day <= 7) { phase = 'Period week'; noMax = true; heavyFrom = addDays(last, 7); }
+  else if (day >= pmsFrom && day <= length + 7) { phase = day > length ? 'Period due' : 'Pre-period'; noMax = true; heavyFrom = addDays(nextStart, 7); }
+  else if (day >= length - 7) { phase = 'Early pre-period'; }
+  else { phase = 'Strong window'; }
+  return { on: true, known: true, day, length, phase, noMax, heavyFrom, nextStart, lastStart: last, estimated: !gaps.length };
 }

@@ -32,9 +32,9 @@ export async function initSync(h) {
   const app = fb.initializeApp(firebaseConfig);
   auth = fb.getAuth(app);
   try {
-    db = fb.initializeFirestore(app, { localCache: fb.persistentLocalCache({ tabManager: fb.persistentMultipleTabManager() }) });
+    db = fb.initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: fb.persistentLocalCache({ tabManager: fb.persistentMultipleTabManager() }) });
   } catch (e) {
-    db = fb.initializeFirestore(app, {});
+    db = fb.initializeFirestore(app, { ignoreUndefinedProperties: true });
   }
   fb.onAuthStateChanged(auth, u => {
     stopListening();
@@ -51,6 +51,10 @@ export async function signIn() {
   provider.setCustomParameters({ prompt: 'select_account' });
   await fb.signInWithPopup(auth, provider);
 }
+export async function signInEmail(email, pw) { await ready(); await fb.signInWithEmailAndPassword(auth, email, pw); }
+export async function signUpEmail(email, pw) { await ready(); await fb.createUserWithEmailAndPassword(auth, email, pw); }
+export async function resetPassword(email) { await ready(); await fb.sendPasswordResetEmail(auth, email); }
+async function ready() { if (!fb) throw new Error('Sync is still loading. Try again in a moment.'); }
 export async function signOutNow() { if (auth) await fb.signOut(auth); }
 export function currentUser() { return user; }
 
