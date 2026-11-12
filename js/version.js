@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.8.0';
+export const APP_VERSION = '2.8.1';
 export const WHATS_NEW = {
+  '2.8.1': 'Owner-only tools are now enabled for the developer account.',
   '2.8.0': 'Training shows and takes effort as RIR (reps in reserve) instead of RPE. Your history is unchanged. RIR 2 = RPE 8.',
   '2.7.1': 'The potions panel now shows a potion bottle instead of the word.',
   '2.7.0': 'The developer now records basic usage (screens, buttons, sign-in and import results) to find confusing parts. Workout numbers and names are never recorded. The New Players preview is owner-only.',
