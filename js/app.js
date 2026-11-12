@@ -160,18 +160,41 @@ function lastSetFor(e) {
 }
 const upper = reps => { const n = String(reps).match(/\d+/g); return n ? +n[n.length - 1] : 0; };
 
-function cycleHtml(ci, compact) {
-  if (!ci.on) return '';
+let cycDetails = false, cycDate = false;
+function cycleHtml(ci) {
+  if (!ci.on) {
+    if (ci.asked) return '';
+    return '<div class="panel cyc"><h1>Cycle Tracking</h1><p class="note">Track your cycle and the System flags the days to skip max-effort lifting (mid-PMS through period week) and tells you when heavy work is back on. Warnings only: it never blocks a lift.</p>' +
+      '<div class="row"><button class="btn primary" data-action="cycleon">Turn on</button><button class="btn" data-action="cycleoff">Not for me</button></div></div>';
+  }
   const loggedToday = !!(store.days[today] && store.days[today].period && store.days[today].period.on);
-  const btn = loggedToday
-    ? '<button class="btn sm" data-action="periodundo">Logged today · undo</button>'
-    : '<button class="btn sm" data-action="period">Period started today</button>';
-  if (!ci.known) return '<div class="panel cyc"><h1>Cycle</h1><p class="note">Log the first day of your period and the System plans heavy work around it.</p>' + btn + '</div>';
+  const logBtns = '<div class="row">' + (loggedToday ? '<button class="btn sm" data-action="periodundo">Logged today · undo</button>' : '<button class="btn sm primary" data-action="period">Period started today</button>') +
+    '<button class="btn sm" data-action="cycdate">' + (cycDate ? 'Cancel' : 'Started another day') + '</button></div>' +
+    (cycDate ? '<div class="row"><input id="pastPeriod" type="date" max="' + today + '" value="' + addDays(today, -1) + '" aria-label="First day of period" style="width:auto"><button class="btn sm" data-action="pastperiod">Log it</button></div>' : '');
+  if (!ci.known) {
+    return '<div class="panel cyc"><h1>Cycle Tracking</h1><p class="note">Log the first day of your most recent period to start.</p>' + logBtns +
+      '<div class="row"><label class="note" for="cycleLen" style="align-self:center;margin:0">Usual cycle length (optional):</label><input id="cycleLen" type="number" min="21" max="40" placeholder="28" value="' + (pv(store, 'cycleLen', '') || '') + '" style="width:80px"> <span class="note" style="align-self:center;margin:0">days</span></div></div>';
+  }
+  const L = ci.length;
+  let strip = '';
+  for (let d = 1; d <= L; d++) {
+    const cls = d <= 5 ? 'p' : d <= 7 ? 'r' : d >= ci.pmsFrom ? 'n' : d >= L - 7 ? 'e' : 's';
+    strip += '<span class="cd ' + cls + (d === Math.min(ci.day, L) ? ' today' : '') + '" title="Day ' + d + '"></span>';
+  }
   const msg = ci.noMax
-    ? '<div class="cycwarn">No max-effort work right now: top sets at RPE 8 or below, no PR attempts. Heavy work is back on from <b>' + prettyDate(ci.heavyFrom) + '</b>.</div>'
-    : (ci.phase === 'Strong window' ? '<div class="cycgo">Green light: a good window for heavy work and PR attempts.</div>' : '<div class="cycgo">Heavy work is fine. The no-max window starts around ' + prettyDate(addDays(ci.lastStart, ci.length - 5)) + '.</div>');
-  return '<div class="panel cyc"><h1>Cycle</h1><div class="cycrow"><span>Day <b>' + ci.day + '</b> of ~' + ci.length + ' · ' + ci.phase + '</span>' + btn + '</div>' + msg +
-    (ci.estimated && !compact ? '<p class="note" style="margin-top:8px">Cycle length is assumed to be 28 days until you log your next start.</p>' : '') + '</div>';
+    ? '<div class="cycwarn">Heads up: no-max-effort window. Keep top sets at RPE 8 or below and save PR attempts. Heavy work is back on from <b>' + prettyDate(ci.heavyFrom) + '</b>. Your call: nothing is blocked.</div>'
+    : '<div class="cycgo">' + (ci.phase === 'Strong window' ? 'Green light: a good window for heavy work and PR attempts.' : 'Heavy work is fine.') + ' The next no-max window starts around <b>' + prettyDate(ci.noMaxFrom) + '</b>.</div>';
+  let details = '';
+  if (cycDetails) {
+    details = '<div class="cychist"><b>Logged starts</b>' + ci.history.map(h => '<div class="prow"><span>' + prettyDate(h.date) + (h.length ? ' <span class="muted">· ' + h.length + '-day cycle</span>' : ' <span class="muted">· current</span>') + '</span><button class="btn xs red" data-action="perioddel" data-date="' + h.date + '" aria-label="Remove ' + h.date + '">Remove</button></div>').join('') +
+      (ci.estimated ? '<div class="row"><label class="note" for="cycleLen" style="align-self:center;margin:0">Usual cycle length:</label><input id="cycleLen" type="number" min="21" max="40" placeholder="28" value="' + (pv(store, 'cycleLen', '') || '') + '" style="width:80px"> <span class="note" style="align-self:center;margin:0">days (used until you log a second start)</span></div>' : '<p class="note">Cycle length is the average of your logged cycles.</p>') + '</div>';
+  }
+  return '<div class="panel cyc"><h1>Cycle Tracking</h1>' +
+    '<div class="cycrow"><span>Day <b>' + ci.day + '</b> of ~' + L + ' · <b>' + ci.phase + '</b></span><span class="muted">Next period ~' + prettyDate(ci.nextStart) + '</span></div>' +
+    '<div class="cstrip" role="img" aria-label="Cycle day ' + ci.day + ' of about ' + L + '">' + strip + '</div>' +
+    '<div class="clegend">' + [['p', 'period'], ['r', 'recovery (no max)'], ['s', 'strong'], ['e', 'early pre-period'], ['n', 'pre-period (no max)']].map(([c, l]) => '<span class="li"><span class="cd ' + c + '"></span>' + l + '</span>').join('') + '</div>' +
+    msg + logBtns +
+    '<button class="linkbtn" data-action="cycdetails" style="margin-top:8px">' + (cycDetails ? 'Hide history' : 'History &amp; settings') + '</button>' + details + '</div>';
 }
 
 function renderTraining() {
@@ -321,9 +344,8 @@ function renderProfile() {
         : prog.imported ? 'Your own program, ' + prog.DAY_ORDER.length + ' days a week.' : 'Your original program, ' + prog.DAY_ORDER.length + ' days a week.') +
       ' Logged history and XP stay when you change it.</p>' +
       '<div class="row"><button class="btn" data-action="editplan">Edit my plan</button><button class="btn" data-action="importplan">Paste or upload a program</button></div></div>' +
-    '<div class="panel"><h1>Cycle-Aware Scheduling</h1><p class="note">Track period start dates. The System flags the no-max-effort window (mid-PMS through period week) and tells you when heavy work is back on.</p>' +
-      '<label class="switch"><input type="checkbox" id="cycleToggle"' + (ci.on ? ' checked' : '') + '> <span>' + (ci.on ? 'On' : 'Off') + '</span></label>' +
-      (ci.on ? '<div class="row"><label class="note" for="pastPeriod" style="align-self:center">Log a past start:</label><input id="pastPeriod" type="date" max="' + today + '" style="width:auto"><button class="btn sm" data-action="pastperiod">Add</button></div>' : '') + '</div>' +
+    '<div class="panel"><h1>Cycle Tracking</h1><p class="note">Track period start dates. The tracker lives at the top of the Training tab.</p>' +
+      '<label class="switch"><input type="checkbox" id="cycleToggle"' + (ci.on ? ' checked' : '') + '> <span>' + (ci.on ? 'On' : 'Off') + '</span></label></div>' +
     (removed.length ? '<div class="panel"><h1>Removed Exercises</h1>' + removed.map(r => '<div class="prow"><span>' + esc(r.day) + ': ' + esc(r.name) + '</span><button class="btn sm" data-action="restore" data-ex="' + r.id + '">Restore</button></div>').join('') + '</div>' : '') +
     '<div class="panel"><h1>Account &amp; Sync</h1>' + acct + '</div>' +
     '<div class="panel"><h1>New Players</h1><p class="note">See exactly what a friend goes through the first time they open the app. Nothing is saved.</p><button class="btn" data-action="preview">Preview new-player setup</button></div>' +
@@ -717,9 +739,14 @@ document.addEventListener('click', async e => {
     case 'periodundo': commit(['days', today, 'period'], { on: false, at: now }); break;
     case 'pastperiod': {
       const v = $('pastPeriod').value;
-      if (v && v <= today) { commit(['days', v, 'period'], { on: true, at: now }); }
+      if (v && v <= today) { cycDate = false; commitMany([[['days', v, 'period'], { on: true, at: now }], [['profile', 'cycle'], { v: true, at: now }]]); }
       break;
     }
+    case 'perioddel': if (confirm('Remove the period start on ' + prettyDate(t.dataset.date) + '?')) commit(['days', t.dataset.date, 'period'], { on: false, at: now }); break;
+    case 'cycleon': setProfile('cycle', true); break;
+    case 'cycleoff': setProfile('cycle', false); break;
+    case 'cycdate': cycDate = !cycDate; render(); break;
+    case 'cycdetails': cycDetails = !cycDetails; render(); break;
     case 'signin': await runAuth(() => sync.signIn()); break;
     case 'emailtoggle': emailOpen = !emailOpen; if (wiz || !pv(store, 'character', null) || regOpen) renderOverlay(); else render(); break;
     case 'emailsignin': case 'emailsignup': case 'emailreset': {
@@ -784,6 +811,7 @@ document.addEventListener('change', e => {
   if (t.dataset && t.dataset.quest && wiz) { if (t.checked) wiz.d.quests.add(t.dataset.quest); else wiz.d.quests.delete(t.dataset.quest); renderOverlay(); }
   if (t.id === 'wizBar' && wiz) wiz.d.pullupBar = t.checked;
   if (t.id === 'cycleToggle') setProfile('cycle', t.checked);
+  if (t.id === 'cycleLen') { const n = parseInt(t.value, 10); setProfile('cycleLen', n >= 21 && n <= 40 ? n : null); }
   if (t.id === 'nameInput') { const v = t.value.trim(); if (v) setProfile('name', v); }
   if (t.id === 'importFile' && t.files[0]) { importBackup(t.files[0]); t.value = ''; }
   if (t.id === 'impPdf' && t.files[0]) { const f = t.files[0]; t.value = ''; readPdf(f); }

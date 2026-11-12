@@ -283,14 +283,15 @@ export function periodStarts(store) {
 export function cycleInfo(store, today = dateKey()) {
   const starts = periodStarts(store).filter(d => d <= today);
   const on = pv(store, 'cycle', starts.length > 0);
-  if (!on) return { on: false };
+  if (!on) return { on: false, asked: !!(store.profile && store.profile.cycle) };
   if (!starts.length) return { on: true, known: false };
   const gaps = [];
   for (let i = Math.max(1, starts.length - 6); i < starts.length; i++) {
     const g = diffDays(starts[i - 1], starts[i]);
     if (g >= 18 && g <= 45) gaps.push(g);
   }
-  const length = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 28;
+  const manual = pv(store, 'cycleLen', null);
+  const length = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : (manual || 28);
   const last = starts[starts.length - 1];
   const day = diffDays(last, today) + 1;
   const nextStart = addDays(last, length);
@@ -300,5 +301,8 @@ export function cycleInfo(store, today = dateKey()) {
   else if (day >= pmsFrom && day <= length + 7) { phase = day > length ? 'Period due' : 'Pre-period'; noMax = true; heavyFrom = addDays(nextStart, 7); }
   else if (day >= length - 7) { phase = 'Early pre-period'; }
   else { phase = 'Strong window'; }
-  return { on: true, known: true, day, length, phase, noMax, heavyFrom, nextStart, lastStart: last, estimated: !gaps.length };
+  // history: each logged start with the length of the cycle that followed it
+  const history = starts.slice(-6).map((d, i, arr) => ({ date: d, length: i < arr.length - 1 ? diffDays(d, arr[i + 1]) : null })).reverse();
+  return { on: true, known: true, day, length, phase, noMax, heavyFrom, nextStart, lastStart: last, estimated: !gaps.length, manual: !gaps.length && !!manual, pmsFrom, history,
+    noMaxFrom: addDays(last, pmsFrom - 1) };
 }

@@ -201,3 +201,18 @@ pre.example{text-align:left;background:#06070d;border:1px dashed #2a3368;border-
 .ednums input[data-ed="rpe"]{flex:0 0 56px}
 .ednums span{color:var(--muted);font-size:12px}
 .edday input,.edday select{text-align:left}.ednums input{text-align:center}
+
+/* v2.3: cycle tracker */
+.cstrip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px;margin:12px 0 6px}
+.cd{display:inline-block;height:16px;border-radius:3px;background:#1a2045}
+.cd.p{background:#ff4d6d}
+.cd.r{background:#b33a55}
+.cd.s{background:#3dffa8}
+.cd.e{background:#c9a24a}
+.cd.n{background:#ffb84d}
+.cd.today{outline:2px solid #fff;outline-offset:1px;box-shadow:0 0 8px #fff}
+.cstrip .cd{height:18px}
+.clegend{font-size:11px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center}
+.clegend .cd{width:10px;height:10px;margin-right:3px;vertical-align:middle}
+.cychist{margin-top:8px;padding:10px;border:1px solid #1f2650;border-radius:8px;background:#06070d;font-size:13px}
+.clegend .li{white-space:nowrap;display:inline-flex;align-items:center}
