@@ -114,6 +114,15 @@ function usePotion(id) {
   }
   commit(['profile', 'potion:' + id], { ...p, used, at: Date.now() });
 }
+// Potion bottle icon for the panel heading (the word "Potions" is shown as an aria-label).
+const POTION_ICON = '<svg viewBox="0 0 24 32" width="20" height="27" aria-hidden="true" focusable="false">' +
+  '<defs><linearGradient id="potionFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9b5cff"/><stop offset="1" stop-color="#3fa9ff"/></linearGradient></defs>' +
+  '<rect x="9" y="0.5" width="6" height="4" rx="1" fill="#7d88b0"/>' +
+  '<rect x="8" y="4.5" width="8" height="4.5" fill="#2a3368"/>' +
+  '<path d="M8 9 H16 L22 17 V28 Q22 31 19 31 H5 Q2 31 2 28 V17 Z" fill="#0d1020" stroke="#3fa9ff" stroke-width="1.2"/>' +
+  '<path d="M3.2 17.5 H20.8 V28 Q20.8 30 18.8 30 H5.2 Q3.2 30 3.2 28 Z" fill="url(#potionFill)"/>' +
+  '<circle cx="9" cy="23" r="1.2" fill="#e6ecff" opacity=".8"/><circle cx="14.5" cy="25.5" r=".9" fill="#e6ecff" opacity=".7"/>' +
+  '</svg>';
 function renderPotions() {
   const fx = potionEffects(store);
   const stock = potionStock(store);
@@ -146,7 +155,7 @@ function renderPotions() {
   const usedToday = Object.keys(potionRecs(store)).map(id => potionRecs(store)[id])
     .filter(p => p && !p.wasted && p.used && p.used.day === today)
     .map(p => '<p class="note">Used today: ' + esc(POTIONS[p.type].name) + (p.used.quest ? ' on a quest' : '') + (p.used.set ? ' on a set' : '') + (POTIONS[p.type].xp ? ' (+' + POTIONS[p.type].xp + ' XP)' : '') + '.</p>').join('');
-  return '<div class="panel"><h1>Potions · ' + stock.length + ' / ' + POTION_CAP + '</h1>' +
+  return '<div class="panel"><h1 class="pot-h"><span class="pot-ico" role="img" aria-label="Potions">' + POTION_ICON + '</span><span>· ' + stock.length + ' / ' + POTION_CAP + '</span></h1>' +
     '<p class="note">Earned: one per cleared day, one per level, two per rank-up. Drops are random. You can hold ' + POTION_CAP + '. They only work on today.</p>' +
     (rows || '<p class="note">None yet.</p>') + usedToday + '</div>';
 }
