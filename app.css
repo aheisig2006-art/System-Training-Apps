@@ -216,3 +216,11 @@ pre.example{text-align:left;background:#06070d;border:1px dashed #2a3368;border-
 .clegend .cd{width:10px;height:10px;margin-right:3px;vertical-align:middle}
 .cychist{margin-top:8px;padding:10px;border:1px solid #1f2650;border-radius:8px;background:#06070d;font-size:13px}
 .clegend .li{white-space:nowrap;display:inline-flex;align-items:center}
+
+/* set +/- control, body & PR form */
+.setctl{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--muted)}
+.setctl b{min-width:1.2em;text-align:center;color:var(--text)}
+.bodyform .prline{display:grid;grid-template-columns:1.1fr 1fr 1fr 1.2fr;gap:6px;align-items:center;margin:6px 0}
+.bodyform .prline.one{grid-template-columns:1.1fr 1fr}
+.bodyform .prline > span:first-child{font-size:13px}
+.bodyform .prnote{font-size:12px;margin:-2px 0 6px}

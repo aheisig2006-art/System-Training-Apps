@@ -6,12 +6,13 @@ export const DAY_ORDER = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
 // pat = movement pattern, used to offer swaps from the exercise library
 export const DAYS = {
   Mon: { title: 'Heavy Pull + Bench', hint: 'Main lifts. Deadlift and bench at RPE 8. Hold the top set at RPE 9 only when you are testing.', ex: [
-    { id: 'dl', name: 'Deadlift', sets: 4, reps: '3-5', rpe: '8', lift: 'deadlift', m: 'back', start: '205–215 lb', pat: 'hinge' },
-    { id: 'bp', name: 'Bench press', sets: 4, reps: '4-6', rpe: '8', lift: 'bench', m: 'chest', start: '90 lb', pat: 'hpush' },
+    { id: 'dl', name: 'Deadlift', sets: 4, reps: '3-5', rpe: '8', lift: 'deadlift', m: 'back', pat: 'hinge' },
+    { id: 'bp', name: 'Bench press', sets: 4, reps: '4-6', rpe: '8', lift: 'bench', m: 'chest', pat: 'hpush' },
     { id: 'pu', name: 'Pull-ups (add weight at 6 reps)', sets: 3, reps: '4-6', rpe: '8', m: 'back', pat: 'vpull', bw: true },
     { id: 'fp', name: 'Face pulls', sets: 3, reps: '12-15', rpe: '8', m: 'shoulders', pat: 'rear' }
   ]},
-  Tue: { title: 'Upper Volume + Calisthenics', hint: 'Hypertrophy work at moderate loads. Calisthenics skill block.', ex: [
+  Tue: { title: 'Light Deadlift + Upper Volume', hint: 'Deadlift variation at RPE 6–7 to open the day, then hypertrophy work and the calisthenics skill block.', ex: [
+    { id: 'dls', name: 'Deadlift variation (RPE 6–7)', sets: 3, reps: '3-5', rpe: '6-7', m: 'back', pat: 'hinge', sug: 'deadlift' },
     { id: 'idb', name: 'Incline dumbbell press', sets: 3, reps: '8-12', rpe: '8', m: 'chest', pat: 'hpush' },
     { id: 'cr', name: 'Chest-supported row', sets: 3, reps: '10-12', rpe: '8', m: 'back', pat: 'hpull' },
     { id: 'lr', name: 'Lateral raise', sets: 3, reps: '12-15', rpe: '9', m: 'shoulders', pat: 'side' },
@@ -22,7 +23,7 @@ export const DAYS = {
     { id: 'ab', name: 'Ab roller', sets: 3, reps: '6-8', rpe: '8', m: null, pat: 'core', bw: true }
   ]},
   Wed: { title: 'Heavy Squat + Lower Volume', hint: 'Squat is the main lift. Lower-body volume follows.', ex: [
-    { id: 'sq', name: 'Squat', sets: 4, reps: '3-5', rpe: '8', lift: 'squat', m: 'quads', start: '130 lb', pat: 'squat' },
+    { id: 'sq', name: 'Squat', sets: 4, reps: '3-5', rpe: '8', lift: 'squat', m: 'quads', pat: 'squat' },
     { id: 'rdl', name: 'Romanian deadlift', sets: 3, reps: '8-10', rpe: '8', m: 'hams', pat: 'hinge' },
     { id: 'hs', name: 'Hack squat or leg press', sets: 3, reps: '10-12', rpe: '9', m: 'quads', pat: 'squat' },
     { id: 'lc', name: 'Lying leg curl', sets: 3, reps: '10-12', rpe: '9', m: 'hams', pat: 'hamcurl' },
@@ -39,9 +40,8 @@ export const DAYS = {
     { id: 'hc', name: 'Hammer curls', sets: 2, reps: '8-10', rpe: '9', m: 'biceps', pat: 'bicep' },
     { id: 'oe', name: 'Overhead cable extension', sets: 2, reps: '12-15', rpe: '9', m: 'triceps', pat: 'tricep' }
   ]},
-  Fri: { title: 'Light Lower + Posterior', hint: 'Keep this at RPE 6–7. No max attempts on Friday. If you are tired, drop to the minimum.', ex: [
-    { id: 'dls', name: 'Deadlift variation (RPE 6–7)', sets: 3, reps: '3-5', rpe: '6-7', m: 'back', pat: 'hinge' },
-    { id: 'ht', name: 'Hip thrust', sets: 3, reps: '8-10', rpe: '8', m: 'hams', pat: 'glute' },
+  Fri: { title: 'Light Squat + Legs', hint: 'Squat variation and leg work at RPE 6–7. No max attempts on Friday. If you are tired, drop to the minimum.', ex: [
+    { id: 'sqv', name: 'Squat variation (RPE 6–7)', sets: 3, reps: '3-5', rpe: '6-7', m: 'quads', pat: 'squat', sug: 'squat' },
     { id: 'le', name: 'Leg extension', sets: 3, reps: '12-15', rpe: '9', m: 'quads', pat: 'quadiso' },
     { id: 'lc2', name: 'Seated leg curl', sets: 2, reps: '12-15', rpe: '9', m: 'hams', pat: 'hamcurl' },
     { id: 'bike', name: 'Bike cardio (optional, 15–20 min)', sets: 1, reps: '20 min', rpe: '6', m: null, bw: true }
@@ -72,11 +72,12 @@ export function getProgram(store) {
     base.DAYS[d].ex.forEach(orig => {
       const ed = edits[orig.id];
       if (ed && ed.removed) { removed.push({ ...orig, day: d }); return; }
-      let e = { ...orig, pat: orig.pat || (orig.lib && LIB[orig.lib] && LIB[orig.lib].pat) };
+      let e = { ...orig, pat: orig.pat || (orig.lib && LIB[orig.lib] && LIB[orig.lib].pat), baseSets: orig.sets };
+      if (ed && ed.sets) e.sets = Math.max(1, orig.sets + ed.sets);
       if (ed && ed.swap && LIB[ed.swap]) {
         const L = LIB[ed.swap];
         e = { ...e, lib: L.id, name: L.name, lift: L.lift, m: L.m || e.m, pat: L.pat, bw: L.eq.every(q => q === 'bw' || q === 'bar' || q === 'dip'),
-          reps: L.hold || e.reps, swappedFrom: orig.name, start: undefined };
+          reps: L.hold || e.reps, swappedFrom: orig.name, sug: undefined };
       }
       list.push(e);
       ex[e.id] = { ...e, day: d };

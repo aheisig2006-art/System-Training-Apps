@@ -98,6 +98,28 @@ export function plannedSets(store, e, week, dayName) {
 }
 export function liftOf(s, EX) { return s.lift !== undefined ? s.lift : (EX[s.ex] && EX[s.ex].lift); }
 export const e1rm = (wt, reps) => wt * (1 + reps / 30);
+// A PR counts for loads for this many days after it was set; older ones need a retest.
+export const PR_MAX_AGE_DAYS = 180;
+export function prIsStale(date, today) {
+  if (!date) return true;
+  return (parse(today) - parse(date)) / 86400000 > PR_MAX_AGE_DAYS;
+}
+// Estimated 1RM from an entered PR (0 if missing or stale).
+export function prE1RM(pr, today) {
+  if (!pr || !(pr.wt > 0) || !(pr.reps > 0) || prIsStale(pr.date, today)) return 0;
+  return e1rm(pr.wt, pr.reps);
+}
+// Working weight for a target: invert Epley, so the top rep target at the target RPE lands on the estimate.
+// Reps in reserve = 10 - RPE; a deload's lower RPE gives a lighter load automatically.
+export function suggestWeight(est1rm, repsText, rpeText) {
+  if (!est1rm) return null;
+  const nums = s => (String(s || '').match(/\d+(\.\d+)?/g) || []).map(Number);
+  const top = nums(repsText).slice(-1)[0] || 5;
+  const r = nums(rpeText);
+  const rpe = r.length ? r.reduce((a, b) => a + b, 0) / r.length : 8;
+  const toFailure = top + (10 - rpe);
+  return Math.round(est1rm / (1 + toFailure / 30) / 5) * 5;
+}
 
 // Training XP events, each with a timestamp: sets, PRs (judged in the order they
 // were logged), and cleared sessions (dated by the set that completed them).

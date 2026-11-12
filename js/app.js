@@ -1,5 +1,5 @@
 import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
-  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo } from './engine.js';
+  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, prIsStale, suggestWeight } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './store.js';
@@ -125,7 +125,7 @@ function renderQuests() {
     const d = isChecked(store, today, q.id);
     html += '<button class="quest' + (d ? ' done' : '') + '" data-action="quest" data-id="' + esc(q.id) + '" aria-pressed="' + d + '">' +
       '<span class="box">' + (d ? '&#10003;' : '') + '</span>' +
-      '<span class="qt"><span class="n">' + esc(q.name) + '</span><span class="d">' + esc(q.desc || '') + '</span></span>' +
+      '<span class="qt"><span class="n">' + esc(q.name) + '</span><span class="d">' + esc(questDesc(q)) + '</span></span>' +
       '<span class="xp">+' + q.xp + ' XP</span></button>';
   });
   const doneCount = dayQuests.filter(q => t.doneIds.includes(q.id)).length;
@@ -226,6 +226,8 @@ function renderTraining() {
     const skipped = isSkipped(store, week, e.id);
     const pr = !!e.lift && isPrAttempt(store, week, e.id);
     const last = lastSetFor(e);
+    const sugNow = (e.lift || e.sug) && !skipped ? suggestedLoad(e, week) : null;
+    const loadLine = (e.lift || e.sug) ? (sugNow ? '<div class="exm">Suggested load: ' + sugNow + ' lb</div>' : '<div class="exm">No load yet. Log a set or add a PR in Profile.</div>') : '';
     let lastHtml = '';
     if (last && !skipped) {
       const hit = upper(e.reps) && last.reps >= upper(e.reps) && last.rpe <= 8 && e.lift;
@@ -233,7 +235,9 @@ function renderTraining() {
         (hit ? ' <span class="hint">&rarr; top of range at RPE 8 or below. Add 5 lb next time.</span>' : '') + '</div>';
     }
     const skippable = canSkip(day, e);
+    const base = e.baseSets || e.sets;
     let tools = '<div class="tools">' +
+      '<span class="setctl">Sets <button class="btn xs" data-action="setadj" data-ex="' + e.id + '" data-d="-1"' + (e.sets <= 1 ? ' disabled' : '') + ' aria-label="Remove a set">−</button> <b>' + e.sets + '</b> <button class="btn xs" data-action="setadj" data-ex="' + e.id + '" data-d="1"' + (e.sets >= base + 3 ? ' disabled' : '') + ' aria-label="Add a set">+</button></span>' +
       '<button class="btn xs" data-action="swapopen" data-ex="' + e.id + '">' + (swapOpen === e.id ? 'Close' : 'Swap') + '</button>' +
       (skipped ? '<button class="btn xs" data-action="unskip" data-ex="' + e.id + '">Unskip</button>'
         : (skippable ? '<button class="btn xs" data-action="skip" data-ex="' + e.id + '"' + (used >= MAX_SKIPS ? ' disabled title="2 skips used"' : '') + '>Skip today</button>' : '<span class="tag">main lift: no skip</span>')) +
@@ -260,7 +264,7 @@ function renderTraining() {
     const heavyNote = (ci.on && ci.noMax && e.lift && !skipped && !pr) ? '<div class="cycnote">Cycle window: keep the top set at RPE 8 or below today.</div>' : '';
     html += '<div class="ex' + (skipped ? ' skipped' : '') + '"><div class="exh"><span class="exn">' + esc(e.name) + '</span><span class="tgt">' + nSets + ' × ' + esc(e.reps) + (rpe ? ' @ RPE ' + rpe : '') + '</span></div>' +
       (e.swappedFrom ? '<div class="exm">Swapped from ' + esc(e.swappedFrom) + '</div>' : '') +
-      (e.start ? '<div class="exm">Starting: ' + e.start + '</div>' : '') +
+      loadLine +
       (e.m ? '<div class="exm">' + esc(prog.NAMES[e.m] || e.m) + (e.focus ? ' · focus' : '') + (e.bw ? ' · bodyweight' : '') + '</div>' : '') +
       tools + heavyNote + lastHtml + rows + '</div>';
   });
@@ -292,7 +296,7 @@ function setRow(e, week, i, label) {
   const s = setAt(store, week, e.id, i);
   if (s) return '<div class="set done"><span>' + label + '</span><span>' + (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps + ' @ ' + s.rpe + '</span><button class="btn sm red" data-action="undo" data-ex="' + e.id + '" data-i="' + i + '">undo</button></div>';
   return '<div class="set" data-ex="' + e.id + '" data-i="' + i + '"><span class="lab">' + label + '</span>' +
-    '<input name="wt" type="number" inputmode="decimal" placeholder="' + (e.bw ? '+lb' : 'lb') + '" aria-label="' + (e.bw ? 'Added weight (optional)' : 'Weight') + ', ' + label + '">' +
+    '<input name="wt" type="number" inputmode="decimal" placeholder="' + (e.bw ? '+lb' : (suggestedLoad(e, week) || 'lb')) + '" aria-label="' + (e.bw ? 'Added weight (optional)' : 'Weight') + ', ' + label + '">' +
     '<input name="reps" type="number" inputmode="numeric" placeholder="reps" aria-label="Reps, ' + label + '">' +
     '<input name="rpe" type="number" inputmode="decimal" placeholder="RPE" step="0.5" min="1" max="10" aria-label="RPE, ' + label + '">' +
     '<button class="btn sm" data-action="log">Log</button></div>';
@@ -344,6 +348,7 @@ function renderProfile() {
         : prog.imported ? 'Your own program, ' + prog.DAY_ORDER.length + ' days a week.' : 'Your original program, ' + prog.DAY_ORDER.length + ' days a week.') +
       ' Logged history and XP stay when you change it.</p>' +
       '<div class="row"><button class="btn" data-action="editplan">Edit my plan</button><button class="btn" data-action="importplan">Paste or upload a program</button></div></div>' +
+    '<div class="panel"><h1>Body &amp; PRs</h1><p class="note">Sets your suggested loads and protein target. Change any time.</p><div id="bodyEdit">' + bodyFormHtml(pv(store, 'body', null)) + '</div><button class="btn" data-action="savebody">Save</button></div>' +
     '<div class="panel"><h1>Cycle Tracking</h1><p class="note">Track period start dates. The tracker lives at the top of the Training tab.</p>' +
       '<label class="switch"><input type="checkbox" id="cycleToggle"' + (ci.on ? ' checked' : '') + '> <span>' + (ci.on ? 'On' : 'Off') + '</span></label></div>' +
     (removed.length ? '<div class="panel"><h1>Removed Exercises</h1>' + removed.map(r => '<div class="prow"><span>' + esc(r.day) + ': ' + esc(r.name) + '</span><button class="btn sm" data-action="restore" data-ex="' + r.id + '">Restore</button></div>').join('') + '</div>' : '') +
@@ -355,13 +360,65 @@ function renderProfile() {
     '<p class="ver">SYSTEM v' + APP_VERSION + '</p>';
 }
 
+// ---------- loads, body numbers and PRs ----------
+// Best estimate of a lift's 1RM: the better of logged sets and an entered PR (PRs older than 6 months are ignored).
+function liftBase(lift) {
+  const body = pv(store, 'body', null);
+  return Math.max(bestE1RM(lift), prE1RM(body && body.prs && body.prs[lift], today));
+}
+function suggestedLoad(e, week) {
+  const lift = e.lift || e.sug;
+  return lift ? suggestWeight(liftBase(lift), e.reps, rpeFor(e, week)) : null;
+}
+function questDesc(q) {
+  if (q.id === 'protein') {
+    const w = (pv(store, 'body', null) || {}).weightLb;
+    if (w) return 'Target about ' + Math.round(w) + ' g: 1 g per lb of bodyweight.';
+  }
+  return q.desc || '';
+}
+// Change one exercise's plan without losing its other edits (swap, removed, set offset).
+function editCommit(id, patch) {
+  const cur = (store.profile.edits || {})[id] || {};
+  commit(['profile', 'edits', id], { swap: cur.swap || null, removed: !!cur.removed, sets: cur.sets || 0, ...patch, at: Date.now() });
+}
+const LIFT_KEYS = ['squat', 'bench', 'deadlift'], REP_KEYS = ['pullups', 'dips', 'pushups'];
+function bodyFormHtml(b) {
+  b = b || {};
+  const prs = b.prs || {}, reps = b.reps || {};
+  const v = x => (x === null || x === undefined ? '' : esc(x));
+  const hint = d => (d && prIsStale(d, today) ? ' <span class="note">Over 6 months old: retest before it sets loads.</span>' : '');
+  const liftRow = (k, label) => { const p = prs[k] || {}; return '<div class="prline"><span>' + label + '</span>' +
+    '<input type="number" inputmode="decimal" data-body="' + k + '.wt" placeholder="lb" aria-label="' + label + ' weight" value="' + v(p.wt) + '">' +
+    '<input type="number" inputmode="numeric" data-body="' + k + '.reps" placeholder="reps" aria-label="' + label + ' reps" value="' + v(p.reps) + '">' +
+    '<input type="date" data-body="' + k + '.date" aria-label="' + label + ' date" value="' + v(p.date) + '"></div>' + (p.date ? '<div class="prnote">' + hint(p.date) + '</div>' : ''); };
+  const repRow = (k, label) => { const p = reps[k] || {}; return '<div class="prline"><span>' + label + '</span>' +
+    '<input type="number" inputmode="numeric" data-body="' + k + '.n" placeholder="max reps" aria-label="' + label + ' max reps" value="' + v(p.n) + '">' +
+    '<span></span><input type="date" data-body="' + k + '.date" aria-label="' + label + ' date" value="' + v(p.date) + '"></div>' + (p.date ? '<div class="prnote">' + hint(p.date) + '</div>' : ''); };
+  return '<div class="bodyform">' +
+    '<div class="prline one"><span>Height (inches)</span><input type="number" inputmode="decimal" data-body="height.v" placeholder="66" aria-label="Height in inches" value="' + v(b.heightIn) + '"></div>' +
+    '<div class="prline one"><span>Bodyweight (lb)</span><input type="number" inputmode="decimal" data-body="weight.v" placeholder="lb" aria-label="Bodyweight in pounds" value="' + v(b.weightLb) + '"></div>' +
+    '<p class="note">PRs (leave blank if unknown). Date = the day you actually hit it.</p>' +
+    liftRow('squat', 'Squat') + liftRow('bench', 'Bench') + liftRow('deadlift', 'Deadlift') +
+    repRow('pullups', 'Pull-ups') + repRow('dips', 'Dips') + repRow('pushups', 'Push-ups') + '</div>';
+}
+function readBody(root) {
+  const rec = {};
+  if (root) root.querySelectorAll('[data-body]').forEach(inp => { const [k, f] = inp.dataset.body.split('.'); (rec[k] = rec[k] || {})[f] = inp.value.trim(); });
+  const num = x => { const n = parseFloat(x); return n > 0 ? n : null; };
+  const out = { heightIn: num((rec.height || {}).v), weightLb: num((rec.weight || {}).v), prs: {}, reps: {} };
+  LIFT_KEYS.forEach(k => { const r = rec[k] || {}; const wt = num(r.wt), n = num(r.reps); if (wt && n) out.prs[k] = { wt, reps: Math.round(n), date: r.date || today }; });
+  REP_KEYS.forEach(k => { const r = rec[k] || {}; const n = num(r.n); if (n) out.reps[k] = { n: Math.round(n), date: r.date || today }; });
+  return out;
+}
+
 // ---------- welcome flow for new players ----------
 function newWizard(preview) {
   regIndex = 0;
   return {
     preview, step: 0,
     d: { name: preview ? '' : pv(store, 'name', ''), character: CHARACTERS[0].id, goal: null, focus: null, equipment: null, pullupBar: false, days: null, experience: null, cycle: null,
-      quests: new Set(QUEST_PRESETS.filter(q => q.on).map(q => q.id)), custom: [] }
+      quests: new Set(QUEST_PRESETS.filter(q => q.on).map(q => q.id)), custom: [], body: {} }
   };
 }
 function wizSteps() {
@@ -370,7 +427,7 @@ function wizSteps() {
   s.push('hunter', 'source');
   if (wiz.d.source === 'own') s.push('equipment', 'import');
   else s.push('goal', 'focus', 'equipment', 'days', 'experience');
-  s.push('cycle', 'quests', 'plan');
+  s.push('body', 'cycle', 'quests', 'plan');
   return s;
 }
 function wizSettings() {
@@ -413,6 +470,9 @@ function renderWizard(o) {
       canNext = !!d.equipment; break;
     case 'days': body = '<h2 class="sysmsg">How many days a week?</h2>' + optCards('days', { 3: { label: '3 days', desc: 'Full body: Mon, Wed, Fri' }, 4: { label: '4 days', desc: 'Upper / lower: Mon, Tue, Thu, Fri' }, 5: { label: '5 days', desc: 'Upper, lower, push, pull, legs: Mon–Fri' } }, d.days); canNext = !!d.days; break;
     case 'experience': body = '<h2 class="sysmsg">Training experience?</h2>' + optCards('experience', EXPERIENCE, d.experience); canNext = !!d.experience; break;
+    case 'body':
+      body = '<h2 class="sysmsg">Your numbers.</h2><p class="note">Optional. The System uses these to suggest your starting loads and protein target. Leave out anything you do not know.</p><div id="wizBody">' + bodyFormHtml(d.body) + '</div>';
+      break;
     case 'cycle': body = '<h2 class="sysmsg">Cycle-aware scheduling?</h2><p class="note">Optional. Log period start dates and the System flags the days to avoid max-effort lifting. You can change this later.</p>' +
       optCards('cycle', { on: { label: 'Turn it on', desc: 'Track my cycle' }, off: { label: 'No thanks', desc: 'Skip it' } }, d.cycle); canNext = !!d.cycle; break;
     case 'quests':
@@ -503,7 +563,7 @@ function planFromProgram() {
     const day = prog.DAYS[d];
     plan.DAYS[d] = { title: day.title, hint: day.hint, ex: day.ex.map(e => {
       const x = { id: e.id, name: e.name, sets: e.prog ? e.sets : e.sets, reps: e.reps, rpe: e.rpe, m: e.m, t: e.t || 'c' };
-      ['lib', 'pat', 'bw', 'lift', 'start'].forEach(k => { if (e[k] !== undefined) x[k] = e[k]; });
+      ['lib', 'pat', 'bw', 'lift', 'sug'].forEach(k => { if (e[k] !== undefined) x[k] = e[k]; });
       x._orig = e.name;
       return x;
     }) };
@@ -596,7 +656,7 @@ function saveEditor() {
   const now = Date.now();
   const list = [[['profile', 'plan'], { v: ed.plan, at: now }]];
   // swaps are baked into the saved plan, so clear them
-  Object.keys(store.profile.edits || {}).forEach(id => list.push([['profile', 'edits', id], { swap: null, removed: false, at: now + 1 }]));
+  Object.keys(store.profile.edits || {}).forEach(id => list.push([['profile', 'edits', id], { swap: null, removed: false, sets: 0, at: now + 1 }]));
   ed = null; trainDay = null;
   commitMany(list);
   flash('PLAN UPDATED');
@@ -609,12 +669,14 @@ function wizNext() {
     if (!n) { $('wizMsg').textContent = 'Enter a hunter name.'; $('wizName').focus(); return; }
     wiz.d.name = n; wiz.d.character = CHARACTERS[regIndex].id;
   }
+  if (steps[wiz.step] === 'body') wiz.d.body = readBody($('wizBody'));
   wiz.step++; renderOverlay();
   const m = document.querySelector('.modal'); if (m) m.scrollTop = 0;
 }
 function wizBack() {
   if (wizSteps()[wiz.step] === 'plan' && ed) syncEditorInputs();
   if (wizSteps()[wiz.step] === 'hunter') wiz.d.name = $('wizName').value.trim();
+  if (wizSteps()[wiz.step] === 'body') wiz.d.body = readBody($('wizBody'));
   wiz.step = Math.max(0, wiz.step - 1); renderOverlay();
 }
 function wizFinish() {
@@ -635,7 +697,7 @@ function wizFinish() {
   commitMany([
     P('name', d.name), P('plan', plan, 1), P('quests', quests, 2), P('cycle', d.cycle === 'on', 3), P('week', 1, 4),
     P('startDate', today, 5), P('startTs', now, 6), P('baseline', { xp: 0, streak: 0, days: 0, penalty: false }, 7),
-    P('character', d.character, 8)
+    P('character', d.character, 8), P('body', d.body || {}, 9)
   ]);
   view = 'quests'; setLocal({ view });
   render();
@@ -728,13 +790,22 @@ document.addEventListener('click', async e => {
     case 'low': commit(['weeks', week, 'low', trainDay], { on: !isLowDay(store, +week, trainDay), at: now }); break;
     case 'pr': commit(['weeks', week, 'pr', t.dataset.ex], { on: !isPrAttempt(store, +week, t.dataset.ex), at: now }); break;
     case 'swapopen': swapOpen = swapOpen === t.dataset.ex ? null : t.dataset.ex; render(); break;
-    case 'swapto': swapOpen = null; commit(['profile', 'edits', t.dataset.ex], { swap: t.dataset.lib || null, removed: false, at: now }); break;
-    case 'remove': {
+    case 'swapto': swapOpen = null; editCommit(t.dataset.ex, { swap: t.dataset.lib || null, removed: false }); break;
+    case 'setadj': {
       const ex = getProgram(store).EX[t.dataset.ex];
-      if (ex && confirm('Remove "' + ex.name + '" from your plan? You can restore it from the Profile tab.')) commit(['profile', 'edits', t.dataset.ex], { swap: null, removed: true, at: now });
+      if (!ex) break;
+      const base = ex.baseSets || ex.sets;
+      const next = Math.min(base + 3, Math.max(1, ex.sets + parseInt(t.dataset.d, 10)));
+      editCommit(t.dataset.ex, { sets: next - base });
       break;
     }
-    case 'restore': commit(['profile', 'edits', t.dataset.ex], { swap: null, removed: false, at: now }); break;
+    case 'savebody': setProfile('body', readBody($('bodyEdit'))); break;
+    case 'remove': {
+      const ex = getProgram(store).EX[t.dataset.ex];
+      if (ex && confirm('Remove "' + ex.name + '" from your plan? You can restore it from the Profile tab.')) editCommit(t.dataset.ex, { removed: true });
+      break;
+    }
+    case 'restore': editCommit(t.dataset.ex, { removed: false }); break;
     case 'period': commitMany([[['days', today, 'period'], { on: true, at: now }], [['profile', 'cycle'], { v: true, at: now }]]); break;
     case 'periodundo': commit(['days', today, 'period'], { on: false, at: now }); break;
     case 'pastperiod': {
