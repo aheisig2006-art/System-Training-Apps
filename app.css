@@ -181,3 +181,23 @@ input:focus{outline:2px solid var(--blue);outline-offset:1px}
 .planday ul{margin:6px 0 0;padding-left:18px}
 .planday li{margin:2px 0}
 .wiznav{justify-content:space-between}
+
+/* v2.2: program import + plan editor */
+textarea{background:#06070d;border:1px solid #2a3368;color:var(--text);padding:10px;border-radius:6px;font-size:14px;width:100%;font-family:inherit;resize:vertical;margin-top:4px}
+textarea:focus,select:focus{outline:2px solid var(--blue);outline-offset:1px}
+select{background:#06070d;border:1px solid #2a3368;color:var(--text);padding:8px;border-radius:6px;font-size:14px;font-family:inherit}
+pre.example{text-align:left;background:#06070d;border:1px dashed #2a3368;border-radius:6px;padding:8px 10px;font-size:12px;color:var(--muted);margin:0 0 10px;white-space:pre-wrap}
+.edmodal{text-align:left}
+.edmodal h1{text-align:center}
+.edday{border:1px solid #1f2650;border-radius:8px;padding:10px;margin:10px 0;background:#0a0e1d;text-align:left}
+.edhead{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+.edhead input{flex:1}
+.edex{padding:8px 0;border-top:1px solid #1a2045}
+.edex.guessed .ednums input{border-color:#ffb84d}
+.edname{margin-bottom:6px}
+.ednums{display:flex;gap:4px;align-items:center}
+.ednums input{width:auto;min-width:0;flex:1;padding:7px 6px;font-size:14px}
+.ednums input[data-ed="sets"]{flex:0 0 52px}
+.ednums input[data-ed="rpe"]{flex:0 0 56px}
+.ednums span{color:var(--muted);font-size:12px}
+.edday input,.edday select{text-align:left}.ednums input{text-align:center}

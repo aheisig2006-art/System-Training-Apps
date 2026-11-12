@@ -4,6 +4,7 @@ import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './store.js';
 import { CHARACTERS, characterArt } from './characters.js';
+import { parseProgram, pdfToText, makeExercise, refreshTargets, ALL_DAYS } from './importer.js';
 import { APP_VERSION, WHATS_NEW } from './version.js';
 
 let { store } = loadStore();
@@ -18,6 +19,8 @@ let trainDay = null;             // chosen from the player's program
 let swapOpen = null;             // exercise id with the swap list open
 let wiz = null;                  // welcome flow state
 let emailOpen = false;
+let ed = null;                   // plan editor: { plan, origin: 'profile' | 'wizard', note }
+let imp = null;                  // program import screen: { text, busy, msg }
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -114,7 +117,7 @@ function renderQuests() {
 
   html += '<div class="panel"><h1>Daily Quests · ' + esc(dayName(today)) + '</h1>' +
     '<p class="note">Resets at midnight. A missed weekday costs −' + RULES.MISSED_XP + ' XP and breaks your streak.</p>' + restLine;
-  if (prog.generated && !prog.DAY_ORDER.includes(dayName(today)) && !t.weekend && !t.declaredRest) {
+  if (prog.custom && !prog.DAY_ORDER.includes(dayName(today)) && !t.weekend && !t.declaredRest) {
     html += '<p class="note">No training scheduled today, so "Work out" is off the list.</p>';
   }
   const dayQuests = questsFor(store, today);
@@ -180,7 +183,7 @@ function renderTraining() {
   }
   const day = prog.DAYS[trainDay];
   const bw = blockWeek(week);
-  const deload = prog.generated ? bw === 5 : week % 5 === 0;
+  const deload = prog.generated ? bw === 5 : (prog.imported ? false : week % 5 === 0);
   const low = isLowDay(store, week, trainDay);
   const ci = cycleInfo(store, today);
   const used = skipsUsed(store, week, day);
@@ -313,7 +316,11 @@ function renderProfile() {
     '<div class="panel"><h1>Hunter</h1><div class="prof">' + (ch ? characterArt(ch, 96) : '') +
       '<div><label class="note" for="nameInput">Hunter name</label><input id="nameInput" maxlength="20" value="' + esc(pv(store, 'name', '')) + '"><br>' +
       '<button class="btn sm" data-action="register" style="margin-top:8px">Change character</button></div></div></div>' +
-    (st ? '<div class="panel"><h1>Your Plan</h1><p>' + esc(GOALS[st.goal].label) + ' · ' + esc(FOCUS[st.focus].label) + ' · ' + esc(EQUIPMENT[st.equipment].label) + ' · ' + st.days + ' days/week · ' + esc(EXPERIENCE[st.experience].label) + '</p></div>' : '') +
+    '<div class="panel"><h1>Your Plan</h1><p class="note">' +
+      (prog.generated && st ? 'Built from your answers: ' + esc(GOALS[st.goal].label) + ' · ' + esc(FOCUS[st.focus].label) + ' · ' + esc(EQUIPMENT[st.equipment].label) + ' · ' + st.days + ' days/week · ' + esc(EXPERIENCE[st.experience].label) + '.'
+        : prog.imported ? 'Your own program, ' + prog.DAY_ORDER.length + ' days a week.' : 'Your original program, ' + prog.DAY_ORDER.length + ' days a week.') +
+      ' Logged history and XP stay when you change it.</p>' +
+      '<div class="row"><button class="btn" data-action="editplan">Edit my plan</button><button class="btn" data-action="importplan">Paste or upload a program</button></div></div>' +
     '<div class="panel"><h1>Cycle-Aware Scheduling</h1><p class="note">Track period start dates. The System flags the no-max-effort window (mid-PMS through period week) and tells you when heavy work is back on.</p>' +
       '<label class="switch"><input type="checkbox" id="cycleToggle"' + (ci.on ? ' checked' : '') + '> <span>' + (ci.on ? 'On' : 'Off') + '</span></label>' +
       (ci.on ? '<div class="row"><label class="note" for="pastPeriod" style="align-self:center">Log a past start:</label><input id="pastPeriod" type="date" max="' + today + '" style="width:auto"><button class="btn sm" data-action="pastperiod">Add</button></div>' : '') + '</div>' +
@@ -338,7 +345,10 @@ function newWizard(preview) {
 function wizSteps() {
   const s = [];
   if (!wiz.preview && !syncUser) s.push('start');
-  s.push('hunter', 'goal', 'focus', 'equipment', 'days', 'experience', 'cycle', 'quests', 'plan');
+  s.push('hunter', 'source');
+  if (wiz.d.source === 'own') s.push('equipment', 'import');
+  else s.push('goal', 'focus', 'equipment', 'days', 'experience');
+  s.push('cycle', 'quests', 'plan');
   return s;
 }
 function wizSettings() {
@@ -367,6 +377,12 @@ function renderWizard(o) {
         '<div class="dots">' + CHARACTERS.map((c, i) => '<button class="dot' + (i === regIndex ? ' on' : '') + '" data-action="regdot" data-i="' + i + '" aria-label="' + esc(c.name) + '"></button>').join('') + '</div>' +
         '<label class="note" for="wizName">Hunter name</label><input id="wizName" maxlength="20" value="' + esc(d.name) + '" placeholder="Your name">';
       break;
+    case 'source': body = '<h2 class="sysmsg">How do you want your training plan?</h2>' +
+      optCards('source', { build: { label: 'Build one for me', desc: 'Answer a few questions and the System builds an RP-based plan' }, own: { label: 'I have my own program', desc: 'Type it, paste it, or upload a PDF' } }, d.source);
+      canNext = !!d.source; break;
+    case 'import':
+      body = '<h2 class="sysmsg">Add your program.</h2>' + importBody();
+      canNext = false; break;
     case 'goal': body = '<h2 class="sysmsg">What do you want from training?</h2>' + optCards('goal', GOALS, d.goal); canNext = !!d.goal; break;
     case 'focus': body = '<h2 class="sysmsg">Any focus area?</h2>' + optCards('focus', FOCUS, d.focus); canNext = !!d.focus; break;
     case 'equipment':
@@ -384,6 +400,12 @@ function renderWizard(o) {
         '</div><div class="row"><input id="customQuest" maxlength="40" placeholder="Add your own quest"><button class="btn sm" data-action="wizaddquest">Add</button></div>';
       canNext = d.quests.size + d.custom.length > 0; break;
     case 'plan': {
+      if (d.source === 'own') {
+        if (!ed || ed.origin !== 'wizard') { body = '<p class="note">Go back and add your program first.</p>'; canNext = false; break; }
+        body = '<h2 class="sysmsg">Check your program.</h2>' + editorBody();
+        nextLabel = wiz.preview ? 'Exit preview' : 'Begin';
+        break;
+      }
       const plan = generatePlan(wizSettings());
       body = '<h2 class="sysmsg">Your training plan.</h2><p class="note">Built from your answers on Renaissance Periodization principles: sets and effort build for 4 weeks, then a deload week. Swap or skip exercises anytime.</p>' +
         plan.DAY_ORDER.map(dn => '<div class="planday"><b>' + dn + ' · ' + esc(plan.DAYS[dn].title) + '</b><ul>' + plan.DAYS[dn].ex.map(e => '<li>' + esc(e.name) + ' <span class="muted">' + e.sets + ' × ' + esc(e.reps) + '</span></li>').join('') + '</ul></div>').join('');
@@ -405,6 +427,159 @@ function renderWizard(o) {
   }
 }
 function wizPick(k, v) { wiz.d[k] = k === 'days' ? +v : v; renderOverlay(); }
+
+// ---------- program import + plan editor ----------
+function importBody() {
+  const st = imp || (imp = { text: (wiz && wiz.d.importText) || '', msg: '' });
+  return '<p class="note">One day per heading, one exercise per line. Like this:</p>' +
+    '<pre class="example">Mon - Upper\nBench press 4x6 @8\nPull-ups 3x8\n\nWed - Lower\nSquat 4x5\nRDL 3x8-10</pre>' +
+    '<label class="note" for="impText">Type or paste your program</label>' +
+    '<textarea id="impText" rows="9" placeholder="Paste from Notes, a doc or a spreadsheet">' + esc(st.text) + '</textarea>' +
+    '<div class="row"><button class="btn primary" data-action="impread"' + (st.busy ? ' disabled' : '') + '>Read my program</button>' +
+    '<label class="btn" for="impPdf">' + (st.busy ? 'Reading PDF…' : 'Upload a PDF') + '</label><input type="file" id="impPdf" accept="application/pdf" hidden></div>' +
+    '<p class="note err" id="impMsg">' + esc(st.msg || '') + '</p>' +
+    '<p class="note">PDFs work when they contain real text (exported from Docs, Word or an app). Scanned pages or photos can\'t be read; type those in instead.</p>';
+}
+function renderImport(o) {
+  o.innerHTML = '<div class="modal wiz"><h1>[ Import a Program ]</h1>' + importBody() +
+    '<div class="row wiznav"><button class="btn" data-action="impcancel">Cancel</button></div></div>';
+  o.hidden = false;
+}
+function readImport(fromPdf) {
+  const ta = $('impText');
+  if (!fromPdf && ta) imp.text = ta.value;
+  if (wiz) wiz.d.importText = imp.text;
+  const r = parseProgram(imp.text, { equipment: wiz ? wiz.d.equipment : null });
+  if (!r.plan.DAY_ORDER.length) { imp.msg = 'Couldn\'t find any exercises. Put one exercise per line, like "Squat 4x5".'; renderOverlay(); return; }
+  let note = 'Read ' + r.plan.DAY_ORDER.length + ' day' + (r.plan.DAY_ORDER.length > 1 ? 's' : '') + ' and ' + Object.values(r.plan.DAYS).reduce((a, d) => a + d.ex.length, 0) + ' exercises. Check everything below.';
+  if (r.guessed) note += ' ' + r.guessed + ' had no sets × reps, so they\'re set to 3 × 8-12: fix them if needed.';
+  if (r.skipped.length) note += ' Skipped lines: ' + r.skipped.slice(0, 5).map(x => '"' + x.slice(0, 30) + '"').join(', ') + (r.skipped.length > 5 ? '…' : '') + '.';
+  ed = { plan: r.plan, origin: wiz ? 'wizard' : 'profile', note };
+  imp = null;
+  if (wiz) { wiz.step = wizSteps().indexOf('cycle'); }
+  renderOverlay();
+}
+async function readPdf(file) {
+  imp.text = $('impText') ? $('impText').value : imp.text;
+  imp.busy = true; imp.msg = ''; renderOverlay();
+  try {
+    const text = await pdfToText(file);
+    imp.busy = false;
+    if (!text.replace(/\s/g, '').length) { imp.msg = 'This PDF has no readable text (probably a scan or photo). Type the program in instead.'; renderOverlay(); return; }
+    imp.text = text.trim();
+    readImport(true);
+  } catch (err) {
+    console.warn('[SYSTEM] pdf', err);
+    imp.busy = false; imp.msg = 'Couldn\'t read that PDF. Paste or type the program instead.'; renderOverlay();
+  }
+}
+function planFromProgram() {
+  // start the editor from whatever plan is active now (swaps included), keeping exercise ids so history still links up
+  const prog = getProgram(store);
+  const plan = { DAY_ORDER: prog.DAY_ORDER.slice(), DAYS: {}, targets: {}, imported: true, settings: { source: 'edit', equipment: (prog.settings && prog.settings.equipment) || 'home' } };
+  prog.DAY_ORDER.forEach(d => {
+    const day = prog.DAYS[d];
+    plan.DAYS[d] = { title: day.title, hint: day.hint, ex: day.ex.map(e => {
+      const x = { id: e.id, name: e.name, sets: e.prog ? e.sets : e.sets, reps: e.reps, rpe: e.rpe, m: e.m, t: e.t || 'c' };
+      ['lib', 'pat', 'bw', 'lift', 'start'].forEach(k => { if (e[k] !== undefined) x[k] = e[k]; });
+      x._orig = e.name;
+      return x;
+    }) };
+  });
+  return plan;
+}
+function editorBody() {
+  const p = ed.plan;
+  return (ed.note ? '<p class="note ok">' + esc(ed.note) + '</p>' : '') +
+    '<p class="note">Changes apply from today. Logged sets and XP stay.</p>' +
+    p.DAY_ORDER.map((dn, di) => {
+      const day = p.DAYS[dn];
+      return '<div class="edday"><div class="edhead">' +
+        '<select data-ed="day" data-d="' + di + '" aria-label="Day of the week">' + ALL_DAYS.map(x => '<option' + (x === dn ? ' selected' : '') + '>' + x + '</option>').join('') + '</select>' +
+        '<input data-ed="title" data-d="' + di + '" value="' + esc(day.title) + '" aria-label="Day name" placeholder="Day name">' +
+        '<button class="btn xs red" data-action="edrmday" data-d="' + di + '" aria-label="Remove ' + dn + '">✕</button></div>' +
+        day.ex.map((e, ei) => '<div class="edex' + (e.guessed ? ' guessed' : '') + '">' +
+          '<input class="edname" data-ed="name" data-d="' + di + '" data-e="' + ei + '" value="' + esc(e.name) + '" aria-label="Exercise">' +
+          '<div class="ednums"><input data-ed="sets" data-d="' + di + '" data-e="' + ei + '" type="number" min="1" max="12" value="' + e.sets + '" aria-label="Sets"><span>×</span>' +
+          '<input data-ed="reps" data-d="' + di + '" data-e="' + ei + '" value="' + esc(e.reps) + '" aria-label="Reps"><span>@</span>' +
+          '<input data-ed="rpe" data-d="' + di + '" data-e="' + ei + '" value="' + esc(e.rpe) + '" aria-label="RPE">' +
+          '<button class="btn xs" data-action="edup" data-d="' + di + '" data-e="' + ei + '" aria-label="Move up"' + (ei ? '' : ' disabled') + '>↑</button>' +
+          '<button class="btn xs red" data-action="edrmex" data-d="' + di + '" data-e="' + ei + '" aria-label="Remove exercise">✕</button></div></div>').join('') +
+        '<button class="btn xs" data-action="edaddex" data-d="' + di + '">+ Add exercise</button></div>';
+    }).join('') +
+    (p.DAY_ORDER.length < 7 ? '<button class="btn sm" data-action="edaddday">+ Add a day</button>' : '') +
+    '<p class="note err" id="edMsg"></p>';
+}
+function renderEditor(o) {
+  o.innerHTML = '<div class="modal wiz edmodal"><h1>[ Your Plan ]</h1>' + editorBody() +
+    '<div class="row wiznav"><button class="btn" data-action="edcancel">Cancel</button><button class="btn primary" data-action="edsave">Save plan</button></div></div>';
+  o.hidden = false;
+}
+function syncEditorInputs() {
+  if (!ed) return;
+  const p = ed.plan;
+  document.querySelectorAll('[data-ed]').forEach(inp => {
+    const di = +inp.dataset.d, dn = p.DAY_ORDER[di];
+    if (!dn) return;
+    const k = inp.dataset.ed;
+    if (k === 'title') p.DAYS[dn].title = inp.value.trim();
+    else if (k === 'day') inp.dataset.pending = inp.value;
+    else {
+      const e = p.DAYS[dn].ex[+inp.dataset.e];
+      if (!e) return;
+      if (k === 'sets') e.sets = Math.max(1, Math.min(12, parseInt(inp.value, 10) || 1));
+      else e[k] = inp.value.trim();
+      if (k !== 'name') delete e.guessed;
+    }
+  });
+  // weekday changes last, so indexes above stay valid
+  const moves = [...document.querySelectorAll('[data-ed="day"]')].map(s => ({ from: p.DAY_ORDER[+s.dataset.d], to: s.value }));
+  if (moves.some(m => m.from !== m.to)) {
+    const days = {}, order = [];
+    moves.forEach(m => { days[m.to] = days[m.to] ? null : p.DAYS[m.from]; order.push(m.to); });
+    if (order.every(x => days[x]) && new Set(order).size === order.length) {
+      p.DAYS = days; p.DAY_ORDER = order.sort((a, b) => ALL_DAYS.indexOf(a) - ALL_DAYS.indexOf(b));
+    } else { ed.dupDays = true; }
+  }
+}
+function finalizePlan(p) {
+  if (ed && ed.dupDays) { ed.dupDays = false; return 'Two days are set to the same weekday. Pick a different day for one of them.'; }
+  if (!p.DAY_ORDER.length) return 'Add at least one training day.';
+  for (const dn of p.DAY_ORDER) {
+    const day = p.DAYS[dn];
+    day.ex = day.ex.filter(e => e.name && e.name.trim());
+    if (!day.ex.length) return dn + ' has no exercises. Add one or remove the day.';
+    const used = {};
+    p.DAY_ORDER.forEach(x => p.DAYS[x].ex.forEach(e => { if (e.id) used[e.id] = 1; }));
+    day.ex.forEach(e => {
+      if (e._orig === undefined || e.name !== e._orig) {
+        // new or renamed: re-match to the library (muscle, swaps, big-three) but keep the id
+        const fresh = makeExercise({ name: e.name, sets: e.sets, reps: e.reps, rpe: e.rpe }, dn, used);
+        ['lib', 'pat', 'bw', 'lift', 'start'].forEach(k => { delete e[k]; if (fresh[k] !== undefined) e[k] = fresh[k]; });
+        e.m = fresh.m; e.t = fresh.t;
+        if (!e.id) e.id = fresh.id;
+      }
+      delete e._orig; delete e.guessed;
+    });
+    if (!day.title) day.title = 'Workout';
+    if (!day.hint) day.hint = 'Your own program. Swap or skip exercises anytime; edit it from Profile → Your Plan.';
+  }
+  refreshTargets(p);
+  return null;
+}
+function saveEditor() {
+  syncEditorInputs();
+  const err = finalizePlan(ed.plan);
+  if (err) { $('edMsg').textContent = err; return; }
+  const now = Date.now();
+  const list = [[['profile', 'plan'], { v: ed.plan, at: now }]];
+  // swaps are baked into the saved plan, so clear them
+  Object.keys(store.profile.edits || {}).forEach(id => list.push([['profile', 'edits', id], { swap: null, removed: false, at: now + 1 }]));
+  ed = null; trainDay = null;
+  commitMany(list);
+  flash('PLAN UPDATED');
+}
+function edRender() { if (wiz) renderOverlay(); else renderOverlay(); }
 function wizNext() {
   const steps = wizSteps();
   if (steps[wiz.step] === 'hunter') {
@@ -416,13 +591,21 @@ function wizNext() {
   const m = document.querySelector('.modal'); if (m) m.scrollTop = 0;
 }
 function wizBack() {
+  if (wizSteps()[wiz.step] === 'plan' && ed) syncEditorInputs();
   if (wizSteps()[wiz.step] === 'hunter') wiz.d.name = $('wizName').value.trim();
   wiz.step = Math.max(0, wiz.step - 1); renderOverlay();
 }
 function wizFinish() {
-  if (wiz.preview) { wiz = null; renderOverlay(); return; }
+  if (wiz.preview) { wiz = null; ed = null; imp = null; renderOverlay(); return; }
   const d = wiz.d, now = Date.now();
-  const plan = generatePlan(wizSettings());
+  let plan;
+  if (d.source === 'own') {
+    syncEditorInputs();
+    const err = finalizePlan(ed.plan);
+    if (err) { $('wizMsg').textContent = err; return; }
+    plan = ed.plan; plan.settings = { source: 'import', equipment: d.equipment || 'gym' };
+    ed = null;
+  } else plan = generatePlan(wizSettings());
   const quests = QUEST_PRESETS.filter(q => d.quests.has(q.id)).map(({ on, ...q }) => q)
     .concat(d.custom.map((c, i) => ({ id: 'custom' + (i + 1), name: c, desc: 'Your own quest.', xp: 30 })));
   const P = (k, v, i = 0) => [['profile', k], { v, at: now + i }];
@@ -454,6 +637,8 @@ function renderOverlay() {
       '<p class="note">Restart wipes level, XP and streak. Training history and PRs are kept.</p></div>';
     o.hidden = false; return;
   }
+  if (ed && !wiz) { renderEditor(o); return; }
+  if (imp && !wiz) { renderImport(o); return; }
   if (wiz && !wiz.preview && pv(store, 'character', null)) wiz = null;   // signed in and existing progress loaded
   if (!wiz && !pv(store, 'character', null) && !hasProgress()) wiz = newWizard(false);
   if (wiz) { renderWizard(o); return; }
@@ -566,7 +751,18 @@ document.addEventListener('click', async e => {
       commitMany(list);
       break;
     }
-    case 'preview': wiz = newWizard(true); renderOverlay(); break;
+    case 'preview': wiz = newWizard(true); ed = null; imp = null; renderOverlay(); break;
+    case 'editplan': ed = { plan: planFromProgram(), origin: 'profile' }; renderOverlay(); break;
+    case 'importplan': imp = { text: '', msg: '' }; renderOverlay(); break;
+    case 'impcancel': imp = null; renderOverlay(); break;
+    case 'impread': readImport(false); break;
+    case 'edcancel': ed = null; renderOverlay(); break;
+    case 'edsave': saveEditor(); break;
+    case 'edaddex': { syncEditorInputs(); const dn = ed.plan.DAY_ORDER[+t.dataset.d]; ed.plan.DAYS[dn].ex.push({ id: '', name: '', sets: 3, reps: '8-12', rpe: '8', m: null, t: 'c' }); edRender(); const inputs = document.querySelectorAll('.edday')[+t.dataset.d].querySelectorAll('.edname'); inputs[inputs.length - 1].focus(); break; }
+    case 'edrmex': { syncEditorInputs(); const dn = ed.plan.DAY_ORDER[+t.dataset.d]; ed.plan.DAYS[dn].ex.splice(+t.dataset.e, 1); edRender(); break; }
+    case 'edup': { syncEditorInputs(); const dn = ed.plan.DAY_ORDER[+t.dataset.d], i = +t.dataset.e, list = ed.plan.DAYS[dn].ex; [list[i - 1], list[i]] = [list[i], list[i - 1]]; edRender(); break; }
+    case 'edrmday': { syncEditorInputs(); const dn = ed.plan.DAY_ORDER[+t.dataset.d]; if (confirm('Remove ' + dn + ' from your plan?')) { ed.plan.DAY_ORDER.splice(+t.dataset.d, 1); delete ed.plan.DAYS[dn]; edRender(); } break; }
+    case 'edaddday': { syncEditorInputs(); const free = ALL_DAYS.find(x => !ed.plan.DAY_ORDER.includes(x)); ed.plan.DAY_ORDER.push(free); ed.plan.DAY_ORDER.sort((a, b) => ALL_DAYS.indexOf(a) - ALL_DAYS.indexOf(b)); ed.plan.DAYS[free] = { title: 'Workout', hint: '', ex: [{ id: '', name: '', sets: 3, reps: '8-12', rpe: '8', m: null, t: 'c' }] }; edRender(); break; }
     case 'wizpick': wizPick(t.dataset.k, t.dataset.v); break;
     case 'wiznext': wizNext(); break;
     case 'wizback': wizBack(); break;
@@ -590,6 +786,7 @@ document.addEventListener('change', e => {
   if (t.id === 'cycleToggle') setProfile('cycle', t.checked);
   if (t.id === 'nameInput') { const v = t.value.trim(); if (v) setProfile('name', v); }
   if (t.id === 'importFile' && t.files[0]) { importBackup(t.files[0]); t.value = ''; }
+  if (t.id === 'impPdf' && t.files[0]) { const f = t.files[0]; t.value = ''; readPdf(f); }
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.id === 'customQuest') { e.preventDefault(); document.querySelector('[data-action="wizaddquest"]').click(); }
@@ -645,15 +842,17 @@ document.addEventListener('visibilitychange', () => {
 
 // ---------- updates ----------
 let swReg = null;
+let updating = false;
 function showUpdateBanner(worker) {
   const b = $('banner');
   b.innerHTML = '<span>SYSTEM UPDATE available</span><button class="btn sm primary" id="updBtn">Install</button>';
   b.hidden = false;
-  $('updBtn').onclick = () => { worker.postMessage({ type: 'SKIP_WAITING' }); b.innerHTML = '<span>Installing update…</span>'; };
+  $('updBtn').onclick = () => { updating = true; worker.postMessage({ type: 'SKIP_WAITING' }); b.innerHTML = '<span>Installing update…</span>'; };
 }
 if ('serviceWorker' in navigator) {
   let reloading = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloading) { reloading = true; location.reload(); } });
+  // reload only when the player tapped Install, not when the first worker takes over
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (updating && !reloading) { reloading = true; location.reload(); } });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').then(reg => {
       swReg = reg;

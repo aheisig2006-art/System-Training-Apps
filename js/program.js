@@ -89,7 +89,7 @@ export function getProgram(store) {
     DAY_ORDER: base.DAY_ORDER, DAYS: days, EX: ex, removed, has,
     TARGETS: plan ? (plan.targets || {}) : TARGETS,
     NAMES: plan ? MUSCLE_LABELS : MUSCLE_NAMES,
-    generated: !!plan, settings: plan ? plan.settings : null
+    generated: !!plan && !plan.imported, imported: !!(plan && plan.imported), custom: !!plan, settings: plan ? plan.settings : null
   };
   if (cache.size > 20) cache.clear();
   cache.set(key, p);

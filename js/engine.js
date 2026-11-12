@@ -52,7 +52,7 @@ export function getQuests(store) {
 // Quests that count on a given day ("Work out" only on training days for generated plans).
 export function questsFor(store, key) {
   const prog = getProgram(store);
-  return getQuests(store).filter(q => !q.trainingOnly || prog.DAY_ORDER.includes(dayName(key)));
+  return getQuests(store).filter(q => !(q.trainingOnly || q.id === 'workout') || prog.DAY_ORDER.includes(dayName(key)));
 }
 export function dayRec(store, key) { return (store.days && store.days[key]) || {}; }
 export function isChecked(store, key, qid) {
