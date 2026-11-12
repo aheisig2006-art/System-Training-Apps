@@ -6,6 +6,8 @@ import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './st
 import { CHARACTERS, characterArt } from './characters.js';
 import { parseProgram, pdfToText, makeExercise, refreshTargets, ALL_DAYS } from './importer.js';
 import { APP_VERSION, WHATS_NEW } from './version.js';
+import { track, setView, setSender, flush } from './track.js';
+import { isOwner } from './owner.js';
 
 let { store } = loadStore();
 let sync = null;                 // the sync module, once loaded
@@ -221,6 +223,7 @@ function renderQuests() {
   $('view').innerHTML = html;
 }
 
+function a0(t) { return t.dataset.action || 'none'; }
 function bestE1RM(lift) {
   const EX = getProgram(store).EX;
   let best = 0;
@@ -394,9 +397,10 @@ function authMsg(text, ok) { document.querySelectorAll('.authmsg').forEach(el =>
 async function runAuth(fn, okText) {
   if (!sync) { authMsg('Sync is still loading. Try again in a moment.'); return; }
   authMsg('');
-  try { await fn(); if (okText) authMsg(okText, true); }
+  try { await fn(); track('auth_ok', {}); if (okText) authMsg(okText, true); }
   catch (err) {
     const code = (err && err.code) || '';
+    track('auth_fail', { code: code.replace('auth/', '') || 'unknown' });
     const m = {
       'auth/operation-not-allowed': 'Email sign-in isn\'t switched on yet (Firebase setting).',
       'auth/invalid-credential': 'Email or password is wrong.', 'auth/wrong-password': 'Email or password is wrong.', 'auth/user-not-found': 'No account with that email. Tap Create account.',
@@ -431,8 +435,8 @@ function renderProfile() {
     '<div class="panel"><h1>Cycle Tracking</h1><p class="note">Track period start dates. The tracker lives at the top of the Training tab.</p>' +
       '<label class="switch"><input type="checkbox" id="cycleToggle"' + (ci.on ? ' checked' : '') + '> <span>' + (ci.on ? 'On' : 'Off') + '</span></label></div>' +
     (removed.length ? '<div class="panel"><h1>Removed Exercises</h1>' + removed.map(r => '<div class="prow"><span>' + esc(r.day) + ': ' + esc(r.name) + '</span><button class="btn sm" data-action="restore" data-ex="' + r.id + '">Restore</button></div>').join('') + '</div>' : '') +
-    '<div class="panel"><h1>Account &amp; Sync</h1>' + acct + '</div>' +
-    '<div class="panel"><h1>New Players</h1><p class="note">See exactly what a friend goes through the first time they open the app. Nothing is saved.</p><button class="btn" data-action="preview">Preview new-player setup</button></div>' +
+    '<div class="panel"><h1>Account &amp; Sync</h1>' + acct + '<p class="note">The developer records basic usage (screens, buttons, sign-in and import results) to find confusing parts. Workout numbers, weights and names are never recorded.</p></div>' +
+    (isOwner(syncUser) ? '<div class="panel"><h1>New Players</h1><p class="note">See exactly what a friend goes through the first time they open the app. Nothing is saved.</p><button class="btn" data-action="preview">Preview new-player setup</button></div>' : '') +
     '<div class="panel"><h1>Backup</h1><p class="note">Your progress lives in the cloud once you sign in. A backup file is extra insurance: export one every month or so.</p>' +
       '<div class="row"><button class="btn" data-action="export">Export backup</button><label class="btn" for="importFile">Import backup</label><input type="file" id="importFile" accept="application/json" hidden></div></div>' +
     '<div class="panel"><h1>Danger Zone</h1><p class="note">Restart wipes your level, XP and streak. Training history and PRs are kept.</p><button class="btn red" data-action="restart">Restart from Level 1</button></div>' +
@@ -611,10 +615,11 @@ function readImport(fromPdf) {
   if (!fromPdf && ta) imp.text = ta.value;
   if (wiz) wiz.d.importText = imp.text;
   const r = parseProgram(imp.text, { equipment: wiz ? wiz.d.equipment : null });
-  if (!r.plan.DAY_ORDER.length) { imp.msg = 'Couldn\'t find any exercises. Put one exercise per line, like "Squat 4x5".'; renderOverlay(); return; }
+  if (!r.plan.DAY_ORDER.length) { track('import_fail', {}); imp.msg = 'Couldn\'t find any exercises. Put one exercise per line, like "Squat 4x5".'; renderOverlay(); return; }
   let note = 'Read ' + r.plan.DAY_ORDER.length + ' day' + (r.plan.DAY_ORDER.length > 1 ? 's' : '') + ' and ' + Object.values(r.plan.DAYS).reduce((a, d) => a + d.ex.length, 0) + ' exercises. Check everything below.';
   if (r.guessed) note += ' ' + r.guessed + ' had no sets × reps, so they\'re set to 3 × 8-12: fix them if needed.';
   if (r.skipped.length) note += ' Skipped lines: ' + r.skipped.slice(0, 5).map(x => '"' + x.slice(0, 30) + '"').join(', ') + (r.skipped.length > 5 ? '…' : '') + '.';
+  track('import_ok', { days: r.plan.DAY_ORDER.length, from: wiz ? 'wizard' : 'profile' });
   ed = { plan: r.plan, origin: wiz ? 'wizard' : 'profile', note };
   imp = null;
   if (wiz) { wiz.step = wizSteps().indexOf('cycle'); }
@@ -743,6 +748,7 @@ function saveEditor() {
 function edRender() { if (wiz) renderOverlay(); else renderOverlay(); }
 function wizNext() {
   const steps = wizSteps();
+  track('wiz_next', { step: steps[wiz.step] || 'end' });
   if (steps[wiz.step] === 'hunter') {
     const n = $('wizName').value.trim();
     if (!n) { $('wizMsg').textContent = 'Enter a hunter name.'; $('wizName').focus(); return; }
@@ -761,6 +767,7 @@ function wizBack() {
 function wizFinish() {
   if (wiz.preview) { wiz = null; ed = null; imp = null; renderOverlay(); return; }
   const d = wiz.d, now = Date.now();
+  track('wiz_finish', { src: d.source || 'none' });
   let plan;
   if (d.source === 'own') {
     syncEditorInputs();
@@ -829,7 +836,8 @@ function renderOverlay() {
 document.addEventListener('click', async e => {
   const t = e.target.closest('[data-action], .tab[data-view]');
   if (!t || t.disabled) return;
-  if (t.dataset.view) { view = t.dataset.view; setLocal({ view }); swapOpen = null; render(); window.scrollTo(0, 0); return; }
+  if (t.dataset.view) { track('view', { to: t.dataset.view }); view = t.dataset.view; setView(view); setLocal({ view }); swapOpen = null; render(); window.scrollTo(0, 0); return; }
+  track('tap', { a: a0(t) });
   const a = t.dataset.action, now = Date.now();
   const week = String(pv(store, 'week', 1));
   switch (a) {
@@ -929,7 +937,7 @@ document.addEventListener('click', async e => {
       commitMany(list);
       break;
     }
-    case 'preview': wiz = newWizard(true); ed = null; imp = null; renderOverlay(); break;
+    case 'preview': if (!isOwner(syncUser)) break; wiz = newWizard(true); ed = null; imp = null; renderOverlay(); break;
     case 'editplan': ed = { plan: planFromProgram(), origin: 'profile' }; renderOverlay(); break;
     case 'importplan': imp = { text: '', msg: '' }; renderOverlay(); break;
     case 'impcancel': imp = null; renderOverlay(); break;
@@ -946,7 +954,7 @@ document.addEventListener('click', async e => {
     case 'wizback': wizBack(); break;
     case 'wizskip': wiz.step++; renderOverlay(); break;
     case 'wizfinish': wizFinish(); break;
-    case 'wizexit': wiz = null; renderOverlay(); break;
+    case 'wizexit': track('wiz_exit', { step: wiz ? wizSteps()[wiz.step] || 'end' : 'none' }); wiz = null; renderOverlay(); break;
     case 'wizaddquest': { const v = $('customQuest').value.trim(); if (v) { wiz.d.custom.push(v.slice(0, 40)); renderOverlay(); } break; }
     case 'wizdelquest': wiz.d.custom.splice(+t.dataset.i, 1); renderOverlay(); break;
     case 'export': exportBackup(); break;
@@ -1054,10 +1062,13 @@ if ('serviceWorker' in navigator) {
   setLocal({ lastVersion: APP_VERSION });
 })();
 
+window.addEventListener('error', e => track('js_error', { kind: (e.error && e.error.name) || 'Error' }));
+
 // ---------- start ----------
 render();
 import('./sync.js').then(mod => {
   sync = mod;
+  setSender(mod.sendEvent);
   return mod.initSync({
     getStore: () => store,
     replaceStore: s => { store = s; saveStore(store); refresh(); },
@@ -1067,6 +1078,7 @@ import('./sync.js').then(mod => {
       syncState = s; syncUser = u;
       renderHunter();
       if (view === 'profile') renderProfile();
+      if (u) flush();
       if (userChanged) renderOverlay();
     }
   });

@@ -1,9 +1,9 @@
 // Bump VERSION (and APP_VERSION in js/version.js) with every release.
-const VERSION = '2.6.0';
+const VERSION = '2.7.0';
 const CACHE = 'system-' + VERSION;
 const ASSETS = [
   './', './index.html', './app.css', './manifest.webmanifest',
-  './js/app.js', './js/engine.js', './js/program.js', './js/store.js', './js/sync.js', './js/characters.js', './js/version.js', './js/library.js', './js/importer.js',
+  './js/app.js', './js/engine.js', './js/program.js', './js/store.js', './js/sync.js', './js/characters.js', './js/version.js', './js/track.js', './js/owner.js', './js/library.js', './js/importer.js',
   './vendor/firebase.js',
   './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png',
   './characters/hunter-1.jpg', './characters/hunter-2.jpg', './characters/hunter-3.jpg', './characters/hunter-4.jpg',

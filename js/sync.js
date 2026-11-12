@@ -6,6 +6,7 @@
 //   days/{YYYY-MM-DD}   -> store.days[date]
 //   weeks/{n}           -> store.weeks[n]
 import { putLeaf, eachLeaf, getAt, isLeaf, emptyStore, local, setLocal } from './store.js';
+import { isOwner } from './owner.js';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCOiWuXfR6m7Q0LX0bsOhikbQwwH7rcuiA',
@@ -57,6 +58,18 @@ export async function resetPassword(email) { await ready(); await fb.sendPasswor
 async function ready() { if (!fb) throw new Error('Sync is still loading. Try again in a moment.'); }
 export async function signOutNow() { if (auth) await fb.signOut(auth); }
 export function currentUser() { return user; }
+
+// Usage events (see track.js). Write-only for the app; the developer reads them in the console.
+// The owner's own use is not logged. Resolves true when the event is handed to Firestore,
+// which also keeps it queued offline. Resolves false while signed out, so it waits on the device.
+export async function sendEvent(ev) {
+  if (!fb || !db || !user) return false;
+  if (isOwner(user)) return true;
+  fb.setDoc(fb.doc(fb.collection(db, 'events')), {
+    uid: user.uid, name: ev.name, props: ev.props, view: ev.view, v: ev.v, sid: ev.sid, t: ev.t
+  }).catch(err => console.warn('[SYSTEM] event write failed', err));
+  return true;
+}
 
 function stopListening() { unsubs.forEach(u => u()); unsubs = []; remoteAt = {}; }
 

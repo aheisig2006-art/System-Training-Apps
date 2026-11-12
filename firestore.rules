@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Each signed-in account reads and writes only its own data.
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Usage events. The app can only ADD an event for its own account.
+    // Nobody can read, change or delete events through the app. The developer
+    // reads them in the Firebase console, which bypasses these rules.
+    match /events/{eventId} {
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'props', 'view', 'v', 'sid', 't'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() <= 40;
+    }
+  }
+}

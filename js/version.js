@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.6.0';
+export const APP_VERSION = '2.7.0';
 export const WHATS_NEW = {
+  '2.7.0': 'The developer now records basic usage (screens, buttons, sign-in and import results) to find confusing parts. Workout numbers and names are never recorded. The New Players preview is owner-only.',
   '2.6.0': 'Potions: earn one per cleared day, one per level and two per rank-up (hold up to 3). Minor (+25 XP), Major (+50 XP), Clear (completes a quest) and Set Break (removes a set) drop at random.',
   '2.5.0': 'Protein (10 XP), creatine (8 XP) and water (5 XP) are back as their own Nutrition quests. Daily Quests are grouped by category. Walk 8,000 steps is a check-off goal.',
   '2.4.0': 'Body and PRs at signup and in Profile: suggested loads come from your PRs and logged sets. Add or remove a set on any exercise. Squat and deadlift now split evenly, and hip thrust is out.',
