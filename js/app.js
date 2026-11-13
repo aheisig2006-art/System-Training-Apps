@@ -176,27 +176,37 @@ function syncLabel() {
   return { loading: 'LOCAL', 'signed-out': 'LOCAL', unavailable: 'LOCAL', syncing: 'SYNCING', synced: 'SYNCED', offline: 'OFFLINE', error: 'SYNC ERROR' }[syncState] || 'LOCAL';
 }
 
+// Inline SVG icons for the STATUS panel (stroke icons, colored by CSS).
+const ICON = {
+  str: '<path d="M2 9v6M5 7v10M19 7v10M22 9v6M5 12h14"/>',
+  agi: '<path d="M7 3h5v8l6 3c1.5.8 2 2 2 3v3H5V3z"/>',
+  vit: '<path d="M12 21s-7-4.5-9.5-9A5 5 0 0 1 12 6a5 5 0 0 1 9.5 6c-2.5 4.5-9.5 9-9.5 9z"/>',
+  hp: '<path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/>',
+  fatigue: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'
+};
+const icon = (k, label) => '<svg class="ico ico-' + k + '" viewBox="0 0 24 24" role="img" aria-label="' + label + '">' + ICON[k] + '</svg>';
+
 function renderHunter() {
   const ch = CHARACTERS.find(c => c.id === pv(store, 'character', null));
   const st = game.stats;
-  const gauge = (label, value, text, cls) => '<div class="gauge"><div class="glab"><span>' + label + '</span><b>' + text + '</b></div>' +
+  const gauge = (k, label, value, text, cls) => '<div class="vital"><div class="vhead2">' + icon(k, label) + '<span>' + label + '</span><b>' + text + '</b></div>' +
     '<div class="bar"><div class="fill ' + cls + '" style="width:' + Math.max(0, Math.min(100, value)) + '%"></div></div></div>';
-  const attr = (k, name) => '<div class="attr"><div class="ahead"><span class="ak">' + name + '</span><b>LV ' + st[k].level + '</b></div>' +
+  const attr = (k, label) => '<div class="attr"><div class="ahead">' + icon(k, label) + '<b>LV ' + st[k].level + '</b></div>' +
     '<div class="bar thin"><div class="fill" style="width:' + Math.min(100, st[k].xp / st[k].need * 100) + '%"></div></div>' +
     '<div class="muted">' + st[k].points + ' pts</div></div>';
   $('hunter').innerHTML =
     '<div class="hunter">' +
       '<div class="avatar">' + (ch ? characterArt(ch, 64) : '') + '</div>' +
-      '<div class="who"><div class="hname">' + esc(pv(store, 'name', '') || 'Unnamed hunter') + '</div><div class="lvl">' + esc(game.title) + '</div></div>' +
+      '<div class="who"><div class="hname">' + esc(pv(store, 'name', '') || 'Unnamed hunter') + '</div><div class="lvl">Title: ' + esc(game.title) + '</div></div>' +
       '<div style="text-align:right"><div class="rank">' + game.rank + '<span class="rsuf">-RANK</span></div><div class="lvl">LEVEL ' + game.level + '</div></div>' +
     '</div>' +
     '<div class="bar"><div class="fill" style="width:' + Math.min(100, game.xp / game.need * 100) + '%"></div></div>' +
     '<div class="stats"><span>XP <b>' + game.xp + ' / ' + game.need + '</b></span><span>Streak <b>' + game.streak + '</b></span><span>Days cleared <b>' + game.days + '</b></span>' +
     '<span class="sync sync-' + syncState + '">' + syncLabel() + '</span></div>' +
-    gauge('HP', game.hp / game.maxHp * 100, game.hp + ' / ' + game.maxHp, 'hpfill') +
-    gauge('Fatigue', st.fatigue.value, st.fatigue.label + ' · ' + st.fatigue.value, 'fatfill') +
-    '<div class="attrs">' + attr('str', 'STR') + attr('agi', 'AGI') + attr('vit', 'VIT') + '</div>' +
-    '<p class="attrnote">STR: reps on loaded sets, plus bodyweight pulls and presses. AGI: bodyweight and skill reps. VIT: cardio minutes. Attributes never award XP.</p>';
+    '<div class="vitals">' + gauge('hp', 'HP', game.hp / game.maxHp * 100, game.hp + ' / ' + game.maxHp, 'hpfill') +
+    gauge('fatigue', 'Fatigue', st.fatigue.value, st.fatigue.label + ' · ' + st.fatigue.value, 'fatfill') + '</div>' +
+    '<div class="attrs">' + attr('str', 'Strength') + attr('agi', 'Agility') + attr('vit', 'Vitality') + '</div>' +
+    '<p class="attrnote">Strength: loaded reps, plus bodyweight pulls and presses. Agility: bodyweight and skill reps. Vitality: cardio minutes. Quests add points too. Attributes never award XP.</p>';
 }
 
 function renderQuests() {
