@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.8.1';
+export const APP_VERSION = '2.9.0';
 export const WHATS_NEW = {
+  '2.9.0': 'System windows have an electric frame. Blue for the male hunters, purple for the female hunters.',
   '2.8.1': 'Owner-only tools are now enabled for the developer account.',
   '2.8.0': 'Training shows and takes effort as RIR (reps in reserve) instead of RPE. Your history is unchanged. RIR 2 = RPE 8.',
   '2.7.1': 'The potions panel now shows a potion bottle instead of the word.',

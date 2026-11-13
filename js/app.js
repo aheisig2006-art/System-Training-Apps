@@ -3,7 +3,7 @@ import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, set
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './store.js';
-import { CHARACTERS, characterArt } from './characters.js';
+import { CHARACTERS, characterArt, applyFrame } from './characters.js';
 import { parseProgram, pdfToText, makeExercise, refreshTargets, ALL_DAYS } from './importer.js';
 import { APP_VERSION, WHATS_NEW } from './version.js';
 import { track, setView, setSender, flush } from './track.js';
@@ -163,6 +163,7 @@ function renderPotions() {
 
 // ---------- rendering ----------
 function render() {
+  applyFrame(CHARACTERS.find(c => c.id === pv(store, 'character', null)));
   renderHunter();
   document.querySelectorAll('.tab[data-view]').forEach(t => t.classList.toggle('on', t.dataset.view === view));
   if (view === 'quests') renderQuests();
@@ -805,12 +806,14 @@ function bindCarousel() {
   car.scrollLeft = regIndex * car.clientWidth;
   car.addEventListener('scroll', () => {
     const i = Math.round(car.scrollLeft / car.clientWidth);
-    if (i !== regIndex) { regIndex = i; if (wiz) wiz.d.character = CHARACTERS[i].id; document.querySelectorAll('.dot').forEach((dd, j) => dd.classList.toggle('on', j === i)); }
+    if (i !== regIndex) { regIndex = i; applyFrame(CHARACTERS[i]); if (wiz) wiz.d.character = CHARACTERS[i].id; document.querySelectorAll('.dot').forEach((dd, j) => dd.classList.toggle('on', j === i)); }
   }, { passive: true });
 }
 
 function renderOverlay() {
   const o = $('overlay');
+  // While registering, the frame follows the character being previewed.
+  applyFrame(wiz || regOpen || !pv(store, 'character', null) ? CHARACTERS[regIndex] : CHARACTERS.find(c => c.id === pv(store, 'character', null)));
   if (game.failed && !wiz) {
     o.innerHTML = '<div class="modal failed"><h2>YOU HAVE FAILED</h2><p>Your XP has fallen to zero.</p>' +
       '<div class="row"><button class="btn red" data-action="failrestart">Restart</button><button class="btn" data-action="failcontinue">Continue at Level 1</button></div>' +
@@ -932,7 +935,7 @@ document.addEventListener('click', async e => {
     case 'register': regOpen = true; renderOverlay(); break;
     case 'regcancel': regOpen = false; renderOverlay(); break;
     case 'regdot': {
-      const car = $('carousel'); regIndex = +t.dataset.i;
+      const car = $('carousel'); regIndex = +t.dataset.i; applyFrame(CHARACTERS[regIndex]);
       if (wiz) wiz.d.character = CHARACTERS[regIndex].id;
       car.scrollTo({ left: regIndex * car.clientWidth, behavior: 'smooth' });
       document.querySelectorAll('.dot').forEach((d, j) => d.classList.toggle('on', j === regIndex));
