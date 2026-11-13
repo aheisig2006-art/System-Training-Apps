@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.10.2';
+export const APP_VERSION = '2.11.0';
 export const WHATS_NEW = {
+  '2.11.0': 'STATUS panel: HP, fatigue and the STR, AGI and VIT attributes. Missed days cost HP. At 0 HP the run ends and you restart at E-rank. Cardio log in Training (feeds VIT). Cycle tracking and training statistics collapse. HP starts counting from Nov 14. No sleep log.',
   '2.10.2': 'Release notes after an update now show only on your devices. Other players just see the Install banner.',
   '2.10.1': 'Glutes is no longer a focus-area option when building a plan.',
   '2.10.0': 'New quest option: Go for a 1-mile run (+60 XP), replacing In bed on time. PRs are now just your one-rep max weight: no reps or dates to fill in, and they no longer expire.',
