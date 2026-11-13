@@ -438,7 +438,7 @@ function renderProfile() {
       '<div><label class="note" for="nameInput">Hunter name</label><input id="nameInput" maxlength="20" value="' + esc(pv(store, 'name', '')) + '"><br>' +
       '<button class="btn sm" data-action="register" style="margin-top:8px">Change character</button></div></div></div>' +
     '<div class="panel"><h1>Your Plan</h1><p class="note">' +
-      (prog.generated && st ? 'Built from your answers: ' + esc(GOALS[st.goal].label) + ' · ' + esc(FOCUS[st.focus].label) + ' · ' + esc(EQUIPMENT[st.equipment].label) + ' · ' + st.days + ' days/week · ' + esc(EXPERIENCE[st.experience].label) + '.'
+      (prog.generated && st ? 'Built from your answers: ' + esc(GOALS[st.goal].label) + ' · ' + esc((FOCUS[st.focus] || FOCUS.none).label) + ' · ' + esc(EQUIPMENT[st.equipment].label) + ' · ' + st.days + ' days/week · ' + esc(EXPERIENCE[st.experience].label) + '.'
         : prog.imported ? 'Your own program, ' + prog.DAY_ORDER.length + ' days a week.' : 'Your original program, ' + prog.DAY_ORDER.length + ' days a week.') +
       ' Logged history and XP stay when you change it.</p>' +
       '<div class="row"><button class="btn" data-action="editplan">Edit my plan</button><button class="btn" data-action="importplan">Paste or upload a program</button></div></div>' +

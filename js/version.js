@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.10.0';
+export const APP_VERSION = '2.10.1';
 export const WHATS_NEW = {
+  '2.10.1': 'Glutes is no longer a focus-area option when building a plan.',
   '2.10.0': 'New quest option: Go for a 1-mile run (+60 XP), replacing In bed on time. PRs are now just your one-rep max weight: no reps or dates to fill in, and they no longer expire.',
   '2.9.1': 'Thicker electric frames on system windows, with glowing energy along the sides. Blue for the male hunters, purple for the female hunters.',
   '2.9.0': 'System windows have an electric frame. Blue for the male hunters, purple for the female hunters.',

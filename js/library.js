@@ -137,7 +137,6 @@ export const GOALS = {
 };
 export const FOCUS = {
   none: { label: 'Balanced', desc: 'No extra focus' },
-  glutes: { label: 'Glutes', desc: 'Extra glute work on lower days' },
   legs: { label: 'Legs', desc: 'Extra quad and hamstring work' },
   upper: { label: 'Upper body', desc: 'Extra chest and shoulder work' },
   pullups: { label: 'Back & pull-ups', desc: 'Extra pulling, pull-up progressions' },
