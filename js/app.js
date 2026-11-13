@@ -178,15 +178,25 @@ function syncLabel() {
 
 function renderHunter() {
   const ch = CHARACTERS.find(c => c.id === pv(store, 'character', null));
+  const st = game.stats;
+  const gauge = (label, value, text, cls) => '<div class="gauge"><div class="glab"><span>' + label + '</span><b>' + text + '</b></div>' +
+    '<div class="bar"><div class="fill ' + cls + '" style="width:' + Math.max(0, Math.min(100, value)) + '%"></div></div></div>';
+  const attr = (k, name) => '<div class="attr"><div class="ahead"><span class="ak">' + name + '</span><b>LV ' + st[k].level + '</b></div>' +
+    '<div class="bar thin"><div class="fill" style="width:' + Math.min(100, st[k].xp / st[k].need * 100) + '%"></div></div>' +
+    '<div class="muted">' + st[k].points + ' pts</div></div>';
   $('hunter').innerHTML =
     '<div class="hunter">' +
       '<div class="avatar">' + (ch ? characterArt(ch, 64) : '') + '</div>' +
       '<div class="who"><div class="hname">' + esc(pv(store, 'name', '') || 'Unnamed hunter') + '</div><div class="lvl">' + esc(game.title) + '</div></div>' +
-      '<div style="text-align:right"><div class="rank">' + game.rank + '</div><div class="lvl">LEVEL ' + game.level + '</div></div>' +
+      '<div style="text-align:right"><div class="rank">' + game.rank + '<span class="rsuf">-RANK</span></div><div class="lvl">LEVEL ' + game.level + '</div></div>' +
     '</div>' +
     '<div class="bar"><div class="fill" style="width:' + Math.min(100, game.xp / game.need * 100) + '%"></div></div>' +
     '<div class="stats"><span>XP <b>' + game.xp + ' / ' + game.need + '</b></span><span>Streak <b>' + game.streak + '</b></span><span>Days cleared <b>' + game.days + '</b></span>' +
-    '<span class="sync sync-' + syncState + '">' + syncLabel() + '</span></div>';
+    '<span class="sync sync-' + syncState + '">' + syncLabel() + '</span></div>' +
+    gauge('HP', game.hp / game.maxHp * 100, game.hp + ' / ' + game.maxHp, 'hpfill') +
+    gauge('Fatigue', st.fatigue.value, st.fatigue.label + ' · ' + st.fatigue.value, 'fatfill') +
+    '<div class="attrs">' + attr('str', 'STR') + attr('agi', 'AGI') + attr('vit', 'VIT') + '</div>' +
+    '<p class="attrnote">STR: reps on loaded sets, plus bodyweight pulls and presses. AGI: bodyweight and skill reps. VIT: cardio minutes. Attributes never award XP.</p>';
 }
 
 function renderQuests() {
@@ -195,7 +205,7 @@ function renderQuests() {
   let html = '';
   if (game.penaltyOpen) {
     html += '<div class="panel penalty"><h1>&#9888; Penalty Zone</h1>' +
-      '<p class="note">You missed a day. −' + RULES.MISSED_XP + ' XP per missed day was deducted and your streak reset. Complete the penalty to clear the mark.</p>' +
+      '<p class="note">You missed a day. −' + RULES.MISSED_XP + ' XP and −' + RULES.HP_MISSED + ' HP were taken and your streak reset. Complete the penalty to clear the mark.</p>' +
       '<button class="quest" data-action="penalty"><span class="box"></span><span class="qt"><span class="n">50 squats + 5-minute walk</span><span class="d">Penalty quest. No XP reward.</span></span></button></div>';
   }
   let restLine;
@@ -257,7 +267,7 @@ let cycDetails = false, cycDate = false;
 function cycleHtml(ci) {
   if (!ci.on) {
     if (ci.asked) return '';
-    return '<div class="panel cyc"><h1>Cycle Tracking</h1><p class="note">Track your cycle and the System flags the days to skip max-effort lifting (mid-PMS through period week) and tells you when heavy work is back on. Warnings only: it never blocks a lift.</p>' +
+    return '<div class="panel cyc"><p class="note">Track your cycle and the System flags the days to skip max-effort lifting (mid-PMS through period week) and tells you when heavy work is back on. Warnings only: it never blocks a lift.</p>' +
       '<div class="row"><button class="btn primary" data-action="cycleon">Turn on</button><button class="btn" data-action="cycleoff">Not for me</button></div></div>';
   }
   const loggedToday = !!(store.days[today] && store.days[today].period && store.days[today].period.on);
@@ -265,7 +275,7 @@ function cycleHtml(ci) {
     '<button class="btn sm" data-action="cycdate">' + (cycDate ? 'Cancel' : 'Started another day') + '</button></div>' +
     (cycDate ? '<div class="row"><input id="pastPeriod" type="date" max="' + today + '" value="' + addDays(today, -1) + '" aria-label="First day of period" style="width:auto"><button class="btn sm" data-action="pastperiod">Log it</button></div>' : '');
   if (!ci.known) {
-    return '<div class="panel cyc"><h1>Cycle Tracking</h1><p class="note">Log the first day of your most recent period to start.</p>' + logBtns +
+    return '<div class="panel cyc"><p class="note">Log the first day of your most recent period to start.</p>' + logBtns +
       '<div class="row"><label class="note" for="cycleLen" style="align-self:center;margin:0">Usual cycle length (optional):</label><input id="cycleLen" type="number" min="21" max="40" placeholder="28" value="' + (pv(store, 'cycleLen', '') || '') + '" style="width:80px"> <span class="note" style="align-self:center;margin:0">days</span></div></div>';
   }
   const L = ci.length;
@@ -282,7 +292,7 @@ function cycleHtml(ci) {
     details = '<div class="cychist"><b>Logged starts</b>' + ci.history.map(h => '<div class="prow"><span>' + prettyDate(h.date) + (h.length ? ' <span class="muted">· ' + h.length + '-day cycle</span>' : ' <span class="muted">· current</span>') + '</span><button class="btn xs red" data-action="perioddel" data-date="' + h.date + '" aria-label="Remove ' + h.date + '">Remove</button></div>').join('') +
       (ci.estimated ? '<div class="row"><label class="note" for="cycleLen" style="align-self:center;margin:0">Usual cycle length:</label><input id="cycleLen" type="number" min="21" max="40" placeholder="28" value="' + (pv(store, 'cycleLen', '') || '') + '" style="width:80px"> <span class="note" style="align-self:center;margin:0">days (used until you log a second start)</span></div>' : '<p class="note">Cycle length is the average of your logged cycles.</p>') + '</div>';
   }
-  return '<div class="panel cyc"><h1>Cycle Tracking</h1>' +
+  return '<div class="panel cyc">' +
     '<div class="cycrow"><span>Day <b>' + ci.day + '</b> of ~' + L + ' · <b>' + ci.phase + '</b></span><span class="muted">Next period ~' + prettyDate(ci.nextStart) + '</span></div>' +
     '<div class="cstrip" role="img" aria-label="Cycle day ' + ci.day + ' of about ' + L + '">' + strip + '</div>' +
     '<div class="clegend">' + [['p', 'period'], ['r', 'recovery (no max)'], ['s', 'strong'], ['e', 'early pre-period'], ['n', 'pre-period (no max)']].map(([c, l]) => '<span class="li"><span class="cd ' + c + '"></span>' + l + '</span>').join('') + '</div>' +
@@ -304,7 +314,7 @@ function renderTraining() {
   const ci = cycleInfo(store, today);
   const used = skipsUsed(store, week, day);
 
-  let html = cycleHtml(ci) + '<div class="panel"><h1>Weekly Split</h1>' +
+  let html = section('cycle', 'Cycle tracking', cycleHtml(ci)) + cardioPanel() + '<div class="panel"><h1>Weekly Split</h1>' +
     '<div class="weekrow">Week <b>' + week + '</b> <button class="btn sm" data-action="week" data-d="-1" aria-label="Previous week">−</button> <button class="btn sm" data-action="week" data-d="1" aria-label="Next week">+</button></div>' +
     (prog.generated ? '<p class="note">Block week ' + bw + ' of 5 · ' + (bw === 5 ? 'deload' : bw === 4 ? 'peak week: hardest effort' : 'building: sets and effort rise each week') + '</p>' : '') +
     '<div class="tabs">' + prog.DAY_ORDER.map(d => '<button class="tab' + (d === trainDay ? ' on' : '') + '" data-action="tday" data-d="' + d + '">' + d + '</button>').join('') + '</div>' +
@@ -363,6 +373,7 @@ function renderTraining() {
   });
   html += '<p class="note">+' + RULES.SET_XP + ' XP per set · +' + RULES.SESSION_XP + ' XP for a full session · +' + RULES.PR_XP + ' XP for a new PR</p></div>';
 
+  const statsAt = html.length;
   const lifts = Object.keys(LIFTS).filter(l => Object.values(prog.EX).some(e => e.lift === l) || bestE1RM(l) > 0);
   if (lifts.length) {
     html += '<div class="panel"><h1>Big Three (estimated 1RM)</h1><p class="note">Epley: weight × (1 + reps / 30). Best logged set, all weeks.</p>' +
@@ -376,6 +387,8 @@ function renderTraining() {
     return '<div class="vrow"><div class="vhead"><span>' + esc(prog.NAMES[m] || m) + '</span><span>' + c + ' / ' + lo + '–' + hi + ' sets</span></div><div class="vbar"><div class="vfill' + (c >= lo ? ' ok' : '') + '" style="width:' + Math.min(100, c / hi * 100) + '%"></div></div></div>';
   }).join('') + '</div>';
 
+  html = html.slice(0, statsAt) + section('stats', 'Training statistics', html.slice(statsAt));
+
   // keep numbers typed into unlogged sets when the screen redraws
   const typed = {};
   document.querySelectorAll('#view .set[data-ex] input').forEach(inp => { if (inp.value) typed[inp.closest('.set').dataset.ex + '|' + inp.closest('.set').dataset.i + '|' + inp.name] = inp.value; });
@@ -384,6 +397,20 @@ function renderTraining() {
     const k = inp.closest('.set').dataset.ex + '|' + inp.closest('.set').dataset.i + '|' + inp.name;
     if (typed[k]) inp.value = typed[k];
   });
+}
+// Collapsible block. The open or closed state is a synced profile field, so every device matches.
+function section(key, title, inner) {
+  const collapsed = !!pv(store, 'fold_' + key, false);
+  return '<div class="sect"><button class="sechead" data-action="fold" data-key="' + key + '" aria-expanded="' + !collapsed + '">' +
+    '<span class="chev">' + (collapsed ? '▸' : '▾') + '</span> ' + esc(title) + '</button>' + (collapsed ? '' : inner) + '</div>';
+}
+function cardioPanel() {
+  const c = game.stats.cardioToday;
+  return '<div class="panel cardio"><h1>Cardio · Vitality</h1>' +
+    '<p class="note">Enter the day\'s total. Each minute adds to VIT, and hard sessions count more. 0 clears the day.</p>' +
+    (c ? '<p class="note">Logged today: <b>' + c.min + ' min</b> · ' + (c.hard ? 'hard' : 'easy') + '</p>' : '') +
+    '<div class="row cardiorow"><input id="cardioMin" type="number" inputmode="numeric" min="0" max="300" placeholder="minutes" aria-label="Cardio minutes">' +
+    '<label class="note cardiohard"><input type="checkbox" id="cardioHard"> Hard</label><button class="btn sm" data-action="cardio">Log cardio</button></div></div>';
 }
 function setRow(e, week, i, label) {
   const s = setAt(store, week, e.id, i);
@@ -810,6 +837,12 @@ function renderOverlay() {
   const o = $('overlay');
   // While registering, the frame follows the character being previewed.
   applyFrame(wiz || regOpen || !pv(store, 'character', null) ? CHARACTERS[regIndex] : CHARACTERS.find(c => c.id === pv(store, 'character', null)));
+  if (game.dead && !wiz) {
+    o.innerHTML = '<div class="modal failed"><h2>PLAYER\'S HEART STOPPED</h2><p>Your HP ran out. The System ends this run.</p>' +
+      '<div class="row"><button class="btn red" data-action="deadrestart">Restart at E-Rank</button></div>' +
+      '<p class="note">Restart wipes level, XP and streak. Training history, PRs and cardio are kept.</p></div>';
+    o.hidden = false; return;
+  }
   if (game.failed && !wiz) {
     o.innerHTML = '<div class="modal failed"><h2>YOU HAVE FAILED</h2><p>Your XP has fallen to zero.</p>' +
       '<div class="row"><button class="btn red" data-action="failrestart">Restart</button><button class="btn" data-action="failcontinue">Continue at Level 1</button></div>' +
@@ -972,6 +1005,15 @@ document.addEventListener('click', async e => {
       if (confirm('Restart from Level 1? This wipes your level, XP and streak on every device. Training history and PRs are kept.')) doRestart();
       break;
     case 'failrestart': doRestart(); break;
+    case 'deadrestart': doRestart(); break;
+    case 'fold': setProfile('fold_' + t.dataset.key, !pv(store, 'fold_' + t.dataset.key, false)); break;
+    case 'cardio': {
+      const raw = $('cardioMin').value;
+      const min = Math.round(+raw);
+      if (raw === '' || !(min >= 0 && min <= 300)) break;
+      commit(['days', today, 'cardio'], { min, hard: $('cardioHard').checked, at: now });
+      break;
+    }
     case 'failcontinue': setProfile('failAck', game.failed); break;
   }
 });

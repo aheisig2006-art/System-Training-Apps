@@ -2,6 +2,7 @@
 // recalculated from the saved records, so two devices that hold the same
 // records always show the same XP, level and streak.
 import { EX as DEFAULT_EX, getProgram, setsFor } from './program.js';
+import { LIBRARY } from './library.js';
 
 export const QUESTS = [
   { id: 'read',     name: 'Read 10 pages',           desc: 'Pages, not minutes.',           xp: 40,  group: 'Daily' },
@@ -20,9 +21,13 @@ export const RULES = {
   EXTRA_REST_XP: 50,    // each weekday rest beyond the free one per week
   STREAK_BONUS: 40,     // every STREAK_EVERY consecutive cleared days
   STREAK_EVERY: 5,
-  SET_XP: 10, SESSION_XP: 75, PR_XP: 50
+  SET_XP: 10, SESSION_XP: 75, PR_XP: 50,
+  HP_MAX: 100,
+  HP_MISSED: 10,        // per missed (ghosted) weekday, alongside the XP loss
+  HP_EXTRA_REST: 5,     // per paid extra rest day
+  HP_CLEAR: 5           // regained on each cleared day
 };
-export const TITLES = { E: 'Lowest of the low', D: 'Hunter in training', C: 'Proven hunter', B: 'Elite hunter', A: 'National-level hunter', S: 'Shadow monarch in the making' };
+export const TITLES = { E: 'None', D: 'Hunter in training', C: 'Proven hunter', B: 'Elite hunter', A: 'National-level hunter', S: 'Shadow monarch in the making' };
 
 // ---------- dates (local time, YYYY-MM-DD) ----------
 export function dateKey(d = new Date()) {
@@ -247,6 +252,7 @@ export function compute(store, today = dateKey(), now = Date.now()) {
   });
 
   let total = base.xp, streak = base.streak, days = base.days;
+  let hp = RULES.HP_MAX, deathOn = null;
   let lastMissed = base.penalty ? addDays(startDate, -1) : null;
   let lastPenaltyClear = null;
   let failedOn = null;
@@ -289,10 +295,17 @@ export function compute(store, today = dateKey(), now = Date.now()) {
     }
     if (paidRest) delta -= RULES.EXTRA_REST_XP;
 
+    let hpDelta = 0;
+    if (status === 'cleared') hpDelta = RULES.HP_CLEAR;
+    else if (status === 'missed') hpDelta = -RULES.HP_MISSED;
+    if (paidRest) hpDelta -= RULES.HP_EXTRA_REST;
+    hp = Math.min(RULES.HP_MAX, Math.max(0, hp + hpDelta));
+    if (hp === 0 && hpDelta < 0 && !deathOn) deathOn = d;
+
     const before = total;
     total = Math.max(0, total + delta);
     if (total === 0 && delta < 0 && before >= 0) failedOn = d;
-    log.push({ date: d, status, delta, paidRest, streakBonus });
+    log.push({ date: d, status, delta, paidRest, streakBonus, hp });
 
     if (d === today) {
       todayInfo = {
@@ -308,10 +321,75 @@ export function compute(store, today = dateKey(), now = Date.now()) {
   const failAck = pv(store, 'failAck', null);
   return {
     total, ...lv, rank: rankOf(lv.level), title: TITLES[rankOf(lv.level)],
+    hp, maxHp: RULES.HP_MAX, dead: !!deathOn, deathDate: deathOn,
+    stats: statusStats(store, today),
     streak, days, log, today: todayInfo, startDate,
     penaltyOpen: !!lastMissed && !(lastPenaltyClear && lastPenaltyClear > lastMissed),
     failed: !!failedOn && failAck !== failedOn ? failedOn : null,
     restCostToday: todayInfo.weekend ? 0 : (todayInfo.restUsedThisWeek >= 1 ? RULES.EXTRA_REST_XP : 0)
+  };
+}
+
+// ---------- status: attributes and fatigue ----------
+// Both are recalculated from saved records, like XP. Neither awards XP.
+const BODYWEIGHT_EQ = ['bw', 'bar', 'dip'];
+const VERTICAL_OR_PRESS = ['vpull', 'vpush', 'hpush', 'hpull'];
+// Which attributes one logged set feeds. Loaded work feeds STR. Bodyweight work feeds AGI,
+// and bodyweight pulls and presses (pull-ups, dips, push-ups) feed both.
+export function attrsOfSet(s, EX) {
+  const lib = s.lib ? LIBRARY.find(x => x.id === s.lib) : null;
+  const ex = EX[s.ex] || {};
+  const pat = lib ? lib.pat : ex.pat;
+  const bw = lib ? lib.eq.every(q => BODYWEIGHT_EQ.includes(q)) : !!ex.bw;
+  if (!bw) return { str: true, agi: false };
+  if (VERTICAL_OR_PRESS.includes(pat)) return { str: true, agi: true };
+  return { str: false, agi: true };
+}
+// Cardio minutes feed VITALITY: 2 points a minute easy, 3 hard.
+export const cardioPoints = c => (c && c.min > 0 ? c.min * (c.hard ? 3 : 2) : 0);
+// Attribute levels reuse the hunter curve. One level unit is 10 points, so STR counts reps.
+const attrLevel = points => { const L = levelFromTotal(Math.floor(points / 10)); return { points, level: L.level, xp: L.xp, need: L.need }; };
+const FATIGUE_DECAY = 0.75, FATIGUE_REST_DECAY = 0.5, FATIGUE_PER_LOAD = 2;
+// Load per day: a hard set (RPE 8+) is 1, any other logged set 0.5, each 10 min of cardio 1 (2 when hard),
+// and each day of the first week after a period starts adds 1. Fatigue = decayed yesterday + 2 x load.
+export function fatigueLabel(v) { return v < 35 ? 'Low' : v < 65 ? 'Moderate' : 'High'; }
+export function statusStats(store, today = dateKey()) {
+  const EX = getProgram(store).EX;
+  const pts = { str: 0, agi: 0, vit: 0 };
+  const load = {};
+  const addLoad = (d, v) => { if (d) load[d] = (load[d] || 0) + v; };
+  liveSets(store).forEach(s => {
+    const reps = +s.reps || 0;
+    if (reps > 0) {
+      const a = attrsOfSet(s, EX);
+      if (a.str) pts.str += reps;
+      if (a.agi) pts.agi += reps;
+    }
+    if (s.ts) addLoad(dateKey(new Date(s.ts)), +s.rpe >= 8 ? 1 : 0.5);
+  });
+  const days = store.days || {};
+  Object.keys(days).forEach(d => {
+    const c = days[d] && days[d].cardio;
+    if (c && c.min > 0) { pts.vit += cardioPoints(c); addLoad(d, c.min / 10 * (c.hard ? 2 : 1)); }
+  });
+  const starts = periodStarts(store);
+  const inPeriodWeek = d => starts.some(s => { const k = diffDays(s, d); return k >= 0 && k < 7; });
+  const keys = [...Object.keys(load), ...Object.keys(days), ...starts].sort();
+  let f = 0;
+  if (keys.length) {
+    for (let d = keys[0]; d <= today; d = addDays(d, 1)) {
+      const day = (load[d] || 0) + (inPeriodWeek(d) ? 1 : 0);
+      const rec = dayRec(store, d);
+      const restDay = !!(rec.rest && rec.rest.on) || (isWeekend(d) && !load[d]);
+      const decay = !day && restDay ? FATIGUE_REST_DECAY : FATIGUE_DECAY;
+      f = Math.min(100, f * decay + day * FATIGUE_PER_LOAD);
+    }
+  }
+  const fatigue = Math.round(f);
+  return {
+    str: attrLevel(pts.str), agi: attrLevel(pts.agi), vit: attrLevel(pts.vit),
+    fatigue: { value: fatigue, label: fatigueLabel(fatigue) },
+    cardioToday: days[today] && days[today].cardio && days[today].cardio.min > 0 ? days[today].cardio : null
   };
 }
 

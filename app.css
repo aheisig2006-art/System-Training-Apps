@@ -254,3 +254,25 @@ pre.example{text-align:left;background:#06070d;border:1px dashed #2a3368;border-
 .bodyform .prnote{font-size:12px;margin:-2px 0 6px}
 
 .qgroup{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted,#7d88b0);margin:12px 0 6px}
+
+/* STATUS panel: HP, fatigue, attributes */
+.rsuf{font-size:14px;letter-spacing:.12em;margin-left:4px;vertical-align:top;line-height:2.6;color:var(--muted);-webkit-text-fill-color:var(--muted)}
+.gauge{margin-top:12px}
+.glab{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.2em;color:var(--muted);text-transform:uppercase;margin-bottom:4px}
+.glab b{color:var(--text);letter-spacing:.05em}
+.fill.hpfill{background:linear-gradient(90deg,#ff4d6d,#ff8a5c)}
+.fill.fatfill{background:linear-gradient(90deg,#9b5cff,#ffb84d)}
+.attrs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.attr{border:1px solid #232a52;border-radius:4px;padding:8px;background:#0a0d1c}
+.ahead{display:flex;justify-content:space-between;align-items:baseline;font-size:12px}
+.ak{color:var(--blue);letter-spacing:.2em;font-weight:700}
+.bar.thin{height:6px;margin-top:6px}
+.attrnote{font-size:11px;color:var(--muted);margin:10px 0 0}
+/* collapsible sections */
+.sect{margin-bottom:6px}
+.sechead{width:100%;text-align:left;background:none;border:1px solid #232a52;color:var(--blue);font:inherit;font-size:12px;letter-spacing:.35em;text-transform:uppercase;padding:10px 12px;border-radius:4px;cursor:pointer;margin-bottom:10px}
+.sechead .chev{display:inline-block;width:14px}
+/* cardio */
+.cardiorow{align-items:center;gap:8px}
+.cardiorow input[type=number]{width:110px}
+.cardiohard{margin:0;display:flex;gap:4px;align-items:center}
