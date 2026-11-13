@@ -25,7 +25,8 @@ export const RULES = {
   HP_MAX: 100,
   HP_MISSED: 10,        // per missed (ghosted) weekday, alongside the XP loss
   HP_EXTRA_REST: 5,     // per paid extra rest day
-  HP_CLEAR: 5           // regained on each cleared day
+  HP_CLEAR: 5,          // regained on each cleared day
+  HP_FROM: '2026-11-14' // HP starts counting on this day, so existing players aren't killed by past history
 };
 export const TITLES = { E: 'None', D: 'Hunter in training', C: 'Proven hunter', B: 'Elite hunter', A: 'National-level hunter', S: 'Shadow monarch in the making' };
 
@@ -236,7 +237,7 @@ export function potionGrants(store, g, today) {
 }
 
 // ---------- the whole game state ----------
-export function compute(store, today = dateKey(), now = Date.now()) {
+export function compute(store, today = dateKey(), now = Date.now(), hpFrom = RULES.HP_FROM) {
   const restart = pv(store, 'restart', null);              // {date, ts}
   const startDate = restart ? restart.date : pv(store, 'startDate', today);
   const startTs = restart ? restart.ts : pv(store, 'startTs', 0);
@@ -295,12 +296,14 @@ export function compute(store, today = dateKey(), now = Date.now()) {
     }
     if (paidRest) delta -= RULES.EXTRA_REST_XP;
 
-    let hpDelta = 0;
-    if (status === 'cleared') hpDelta = RULES.HP_CLEAR;
-    else if (status === 'missed') hpDelta = -RULES.HP_MISSED;
-    if (paidRest) hpDelta -= RULES.HP_EXTRA_REST;
-    hp = Math.min(RULES.HP_MAX, Math.max(0, hp + hpDelta));
-    if (hp === 0 && hpDelta < 0 && !deathOn) deathOn = d;
+    if (d >= hpFrom) {
+      let hpDelta = 0;
+      if (status === 'cleared') hpDelta = RULES.HP_CLEAR;
+      else if (status === 'missed') hpDelta = -RULES.HP_MISSED;
+      if (paidRest) hpDelta -= RULES.HP_EXTRA_REST;
+      hp = Math.min(RULES.HP_MAX, Math.max(0, hp + hpDelta));
+      if (hp === 0 && hpDelta < 0 && !deathOn) deathOn = d;
+    }
 
     const before = total;
     total = Math.max(0, total + delta);
