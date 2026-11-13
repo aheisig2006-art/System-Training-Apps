@@ -49,12 +49,15 @@ export function pv(store, field, dflt) {
   const leaf = store.profile && store.profile[field];
   return leaf && leaf.v !== undefined ? leaf.v : dflt;
 }
+// Quest ids that have been retired; dropped from saved lists.
+const RETIRED_QUESTS = ['sleep'];
 export function getQuests(store) {
   const stored = pv(store, 'quests', null);
   if (!Array.isArray(stored) || !stored.length) return QUESTS;
   const byId = Object.fromEntries(QUESTS.map(q => [q.id, q]));
-  const have = new Set(stored.map(q => q.id));
-  const merged = stored.map(q => byId[q.id] ? { ...q, ...byId[q.id] } : q);
+  const kept = stored.filter(q => !RETIRED_QUESTS.includes(q.id));
+  const have = new Set(kept.map(q => q.id));
+  const merged = kept.map(q => byId[q.id] ? { ...q, ...byId[q.id] } : q);
   MANDATORY_QUESTS.forEach(id => { if (!have.has(id)) merged.push(byId[id]); });
   return merged;
 }
@@ -108,16 +111,10 @@ export function plannedSets(store, e, week, dayName) {
 }
 export function liftOf(s, EX) { return s.lift !== undefined ? s.lift : (EX[s.ex] && EX[s.ex].lift); }
 export const e1rm = (wt, reps) => wt * (1 + reps / 30);
-// A PR counts for loads for this many days after it was set; older ones need a retest.
-export const PR_MAX_AGE_DAYS = 180;
-export function prIsStale(date, today) {
-  if (!date) return true;
-  return (parse(today) - parse(date)) / 86400000 > PR_MAX_AGE_DAYS;
-}
-// Estimated 1RM from an entered PR (0 if missing or stale).
-export function prE1RM(pr, today) {
-  if (!pr || !(pr.wt > 0) || !(pr.reps > 0) || prIsStale(pr.date, today)) return 0;
-  return e1rm(pr.wt, pr.reps);
+// An entered PR is a single: its weight is the 1RM. No date, so it does not expire.
+export function prE1RM(pr) {
+  if (!pr || !(pr.wt > 0)) return 0;
+  return pr.wt;
 }
 // Working weight for a target: invert Epley, so the top rep target at the target RPE lands on the estimate.
 // Reps in reserve = 10 - RPE; a deload's lower RPE gives a lighter load automatically.

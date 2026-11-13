@@ -1,5 +1,5 @@
 import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
-  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, prIsStale, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion } from './engine.js';
+  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './store.js';
@@ -455,10 +455,10 @@ function renderProfile() {
 }
 
 // ---------- loads, body numbers and PRs ----------
-// Best estimate of a lift's 1RM: the better of logged sets and an entered PR (PRs older than 6 months are ignored).
+// Best estimate of a lift's 1RM: the better of logged sets and an entered PR.
 function liftBase(lift) {
   const body = pv(store, 'body', null);
-  return Math.max(bestE1RM(lift), prE1RM(body && body.prs && body.prs[lift], today));
+  return Math.max(bestE1RM(lift), prE1RM(body && body.prs && body.prs[lift]));
 }
 function suggestedLoad(e, week) {
   const lift = e.lift || e.sug;
@@ -481,18 +481,14 @@ function bodyFormHtml(b) {
   b = b || {};
   const prs = b.prs || {}, reps = b.reps || {};
   const v = x => (x === null || x === undefined ? '' : esc(x));
-  const hint = d => (d && prIsStale(d, today) ? ' <span class="note">Over 6 months old: retest before it sets loads.</span>' : '');
-  const liftRow = (k, label) => { const p = prs[k] || {}; return '<div class="prline"><span>' + label + '</span>' +
-    '<input type="number" inputmode="decimal" data-body="' + k + '.wt" placeholder="lb" aria-label="' + label + ' weight" value="' + v(p.wt) + '">' +
-    '<input type="number" inputmode="numeric" data-body="' + k + '.reps" placeholder="reps" aria-label="' + label + ' reps" value="' + v(p.reps) + '">' +
-    '<input type="date" data-body="' + k + '.date" aria-label="' + label + ' date" value="' + v(p.date) + '"></div>' + (p.date ? '<div class="prnote">' + hint(p.date) + '</div>' : ''); };
-  const repRow = (k, label) => { const p = reps[k] || {}; return '<div class="prline"><span>' + label + '</span>' +
-    '<input type="number" inputmode="numeric" data-body="' + k + '.n" placeholder="max reps" aria-label="' + label + ' max reps" value="' + v(p.n) + '">' +
-    '<span></span><input type="date" data-body="' + k + '.date" aria-label="' + label + ' date" value="' + v(p.date) + '"></div>' + (p.date ? '<div class="prnote">' + hint(p.date) + '</div>' : ''); };
+  const liftRow = (k, label) => { const p = prs[k] || {}; return '<div class="prline one"><span>' + label + '</span>' +
+    '<input type="number" inputmode="decimal" data-body="' + k + '.wt" placeholder="lb" aria-label="' + label + ' PR weight" value="' + v(p.wt) + '"></div>'; };
+  const repRow = (k, label) => { const p = reps[k] || {}; return '<div class="prline one"><span>' + label + '</span>' +
+    '<input type="number" inputmode="numeric" data-body="' + k + '.n" placeholder="max reps" aria-label="' + label + ' max reps" value="' + v(p.n) + '"></div>'; };
   return '<div class="bodyform">' +
     '<div class="prline one"><span>Height (inches)</span><input type="number" inputmode="decimal" data-body="height.v" placeholder="66" aria-label="Height in inches" value="' + v(b.heightIn) + '"></div>' +
     '<div class="prline one"><span>Bodyweight (lb)</span><input type="number" inputmode="decimal" data-body="weight.v" placeholder="lb" aria-label="Bodyweight in pounds" value="' + v(b.weightLb) + '"></div>' +
-    '<p class="note">PRs (leave blank if unknown). Date = the day you actually hit it.</p>' +
+    '<p class="note">Your PRs are singles: enter the heaviest weight you can lift for one rep. Leave blank if unknown.</p>' +
     liftRow('squat', 'Squat') + liftRow('bench', 'Bench') + liftRow('deadlift', 'Deadlift') +
     repRow('pullups', 'Pull-ups') + repRow('dips', 'Dips') + repRow('pushups', 'Push-ups') + '</div>';
 }
@@ -501,8 +497,8 @@ function readBody(root) {
   if (root) root.querySelectorAll('[data-body]').forEach(inp => { const [k, f] = inp.dataset.body.split('.'); (rec[k] = rec[k] || {})[f] = inp.value.trim(); });
   const num = x => { const n = parseFloat(x); return n > 0 ? n : null; };
   const out = { heightIn: num((rec.height || {}).v), weightLb: num((rec.weight || {}).v), prs: {}, reps: {} };
-  LIFT_KEYS.forEach(k => { const r = rec[k] || {}; const wt = num(r.wt), n = num(r.reps); if (wt && n) out.prs[k] = { wt, reps: Math.round(n), date: r.date || today }; });
-  REP_KEYS.forEach(k => { const r = rec[k] || {}; const n = num(r.n); if (n) out.reps[k] = { n: Math.round(n), date: r.date || today }; });
+  LIFT_KEYS.forEach(k => { const r = rec[k] || {}; const wt = num(r.wt); if (wt) out.prs[k] = { wt }; });
+  REP_KEYS.forEach(k => { const r = rec[k] || {}; const n = num(r.n); if (n) out.reps[k] = { n: Math.round(n) }; });
   return out;
 }
 
