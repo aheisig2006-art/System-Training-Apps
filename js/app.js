@@ -1061,9 +1061,10 @@ if ('serviceWorker' in navigator) {
     }).catch(() => {});
   });
 }
+// Release notes after an update show only on the owner's devices; other players just get the Install banner.
 (function whatsNew() {
   const l = local();
-  if (l.lastVersion && l.lastVersion !== APP_VERSION && WHATS_NEW[APP_VERSION]) {
+  if (l.ownerDevice && l.lastVersion && l.lastVersion !== APP_VERSION && WHATS_NEW[APP_VERSION]) {
     const b = $('banner');
     b.innerHTML = '<span><b>Updated to v' + APP_VERSION + ':</b> ' + esc(WHATS_NEW[APP_VERSION]) + '</span><button class="btn sm" id="nwBtn">OK</button>';
     b.hidden = false;
@@ -1086,6 +1087,7 @@ import('./sync.js').then(mod => {
     onStatus: (s, u) => {
       const userChanged = (u && u.uid) !== (syncUser && syncUser.uid);
       syncState = s; syncUser = u;
+      if (u) setLocal({ ownerDevice: isOwner(u) });
       renderHunter();
       if (view === 'profile') renderProfile();
       if (u) flush();
