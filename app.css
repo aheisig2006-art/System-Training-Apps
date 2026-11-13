@@ -276,3 +276,14 @@ pre.example{text-align:left;background:#06070d;border:1px dashed #2a3368;border-
 .cardiorow{align-items:center;gap:8px}
 .cardiorow input[type=number]{width:110px}
 .cardiohard{margin:0;display:flex;gap:4px;align-items:center}
+
+/* STATUS icons and the HP / fatigue row */
+.ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vertical-align:middle;flex:none;filter:drop-shadow(0 0 4px currentColor)}
+.ico-str,.ico-agi,.ico-vit{color:var(--blue)}
+.ico-hp{color:#ff6b86}
+.ico-fatigue{color:#b98bff}
+.attr .ahead .ico{width:22px;height:22px}
+.vitals{display:flex;gap:14px;margin-top:12px}
+.vital{flex:1;min-width:0}
+.vhead2{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.vhead2 b{margin-left:auto;color:var(--text);letter-spacing:.04em;font-size:12px}

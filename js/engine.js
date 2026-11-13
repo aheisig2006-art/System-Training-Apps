@@ -28,6 +28,17 @@ export const RULES = {
   HP_CLEAR: 5,          // regained on each cleared day
   HP_FROM: '2026-11-14' // HP starts counting on this day, so existing players aren't killed by past history
 };
+// Quest rewards. Attribute points go to STR, AGI and VIT (never XP). Health quests restore HP and lower fatigue.
+export const QUEST_EFFECTS = {
+  workout:  { attr: { str: 10 } },
+  pushups:  { attr: { agi: 10 } },
+  mobility: { attr: { agi: 10 } },
+  steps:    { attr: { vit: 10 }, hp: 1, fatigue: 2 },
+  run:      { attr: { vit: 20 }, hp: 2, fatigue: 3 },
+  protein:  { hp: 2, fatigue: 3 },
+  creatine: { hp: 1, fatigue: 2 },
+  water:    { hp: 1, fatigue: 2 }
+};
 export const TITLES = { E: 'None', D: 'Hunter in training', C: 'Proven hunter', B: 'Elite hunter', A: 'National-level hunter', S: 'Shadow monarch in the making' };
 
 // ---------- dates (local time, YYYY-MM-DD) ----------
@@ -301,6 +312,7 @@ export function compute(store, today = dateKey(), now = Date.now(), hpFrom = RUL
       if (status === 'cleared') hpDelta = RULES.HP_CLEAR;
       else if (status === 'missed') hpDelta = -RULES.HP_MISSED;
       if (paidRest) hpDelta -= RULES.HP_EXTRA_REST;
+      doneIds.forEach(id => { hpDelta += (QUEST_EFFECTS[id] && QUEST_EFFECTS[id].hp) || 0; });
       hp = Math.min(RULES.HP_MAX, Math.max(0, hp + hpDelta));
       if (hp === 0 && hpDelta < 0 && !deathOn) deathOn = d;
     }
@@ -375,9 +387,22 @@ export function statusStats(store, today = dateKey()) {
     const c = days[d] && days[d].cardio;
     if (c && c.min > 0) { pts.vit += cardioPoints(c); addLoad(d, c.min / 10 * (c.hard ? 2 : 1)); }
   });
+  // quest rewards: attribute points and fatigue relief, counted on the day each quest is checked
+  const clears = potionEffects(store).clears;
+  const liveIds = getQuests(store).map(q => q.id);
+  const relief = {};
+  const questDays = [...new Set([...Object.keys(days), ...Object.keys(clears)])];
+  questDays.forEach(d => {
+    liveIds.forEach(id => {
+      const eff = QUEST_EFFECTS[id];
+      if (!eff || !isChecked(store, d, id)) return;
+      Object.keys(eff.attr || {}).forEach(k => { pts[k] += eff.attr[k]; });
+      if (eff.fatigue) relief[d] = (relief[d] || 0) + eff.fatigue;
+    });
+  });
   const starts = periodStarts(store);
   const inPeriodWeek = d => starts.some(s => { const k = diffDays(s, d); return k >= 0 && k < 7; });
-  const keys = [...Object.keys(load), ...Object.keys(days), ...starts].sort();
+  const keys = [...Object.keys(load), ...questDays, ...starts].sort();
   let f = 0;
   if (keys.length) {
     for (let d = keys[0]; d <= today; d = addDays(d, 1)) {
@@ -385,7 +410,7 @@ export function statusStats(store, today = dateKey()) {
       const rec = dayRec(store, d);
       const restDay = !!(rec.rest && rec.rest.on) || (isWeekend(d) && !load[d]);
       const decay = !day && restDay ? FATIGUE_REST_DECAY : FATIGUE_DECAY;
-      f = Math.min(100, f * decay + day * FATIGUE_PER_LOAD);
+      f = Math.max(0, Math.min(100, f * decay + day * FATIGUE_PER_LOAD - (relief[d] || 0)));
     }
   }
   const fatigue = Math.round(f);
