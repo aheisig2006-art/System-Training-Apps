@@ -1,5 +1,5 @@
 // Bump VERSION (and APP_VERSION in js/version.js) with every release.
-const VERSION = '2.11.2';
+const VERSION = '2.11.3';
 const CACHE = 'system-' + VERSION;
 const ASSETS = [
   './', './index.html', './app.css', './manifest.webmanifest',
