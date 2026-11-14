@@ -46,6 +46,19 @@ export function dateKey(d = new Date()) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 function parse(key) { const [y, m, d] = key.split('-').map(Number); return new Date(y, m - 1, d); }
+
+// ---------- penalty quests ----------
+// Rotates by the missed day, so each missed day gets one variant and it stays the same on reload.
+export const PENALTY_QUESTS = [
+  { name: '50 squats + 50 push-ups', desc: 'Penalty quest. No XP reward.' },
+  { name: '50 squats + 10 pull-ups', desc: 'Penalty quest. No XP reward.' },
+  { name: 'Go for a 1-mile run', desc: 'Penalty quest. No XP reward.' },
+  { name: '5-minute walk', desc: 'Penalty quest. No XP reward.' }
+];
+export function penaltyQuest(key) {
+  const n = Math.round(parse(key).getTime() / 86400000);
+  return PENALTY_QUESTS[((n % PENALTY_QUESTS.length) + PENALTY_QUESTS.length) % PENALTY_QUESTS.length];
+}
 export function addDays(key, n) { const d = parse(key); d.setDate(d.getDate() + n); return dateKey(d); }
 export function weekday(key) { return parse(key).getDay(); } // 0 = Sunday
 export function isWeekend(key) { const w = weekday(key); return w === 0 || w === 6; }
@@ -340,6 +353,7 @@ export function compute(store, today = dateKey(), now = Date.now(), hpFrom = RUL
     stats: statusStats(store, today),
     streak, days, log, today: todayInfo, startDate,
     penaltyOpen: !!lastMissed && !(lastPenaltyClear && lastPenaltyClear > lastMissed),
+    penaltyFor: lastMissed,
     failed: !!failedOn && failAck !== failedOn ? failedOn : null,
     restCostToday: todayInfo.weekend ? 0 : (todayInfo.restUsedThisWeek >= 1 ? RULES.EXTRA_REST_XP : 0)
   };

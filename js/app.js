@@ -1,5 +1,5 @@
 import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
-  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion } from './engine.js';
+  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './store.js';
@@ -213,9 +213,10 @@ function renderQuests() {
   const prog = getProgram(store);
   let html = '';
   if (game.penaltyOpen) {
+    const pq = penaltyQuest(game.penaltyFor);
     html += '<div class="panel penalty"><h1>&#9888; Penalty Zone</h1>' +
       '<p class="note">You missed a day. −' + RULES.MISSED_XP + ' XP and −' + RULES.HP_MISSED + ' HP were taken and your streak reset. Complete the penalty to clear the mark.</p>' +
-      '<button class="quest" data-action="penalty"><span class="box"></span><span class="qt"><span class="n">50 squats + 5-minute walk</span><span class="d">Penalty quest. No XP reward.</span></span></button></div>';
+      '<button class="quest" data-action="penalty"><span class="box"></span><span class="qt"><span class="n">' + esc(pq.name) + '</span><span class="d">' + esc(pq.desc) + '</span></span></button></div>';
   }
   let restLine;
   if (t.declaredRest) restLine = '<div class="restbox on"><b>Rest day.</b> Every quest is excused today' + (t.paidRest ? ' (−' + RULES.EXTRA_REST_XP + ' XP, extra rest day this week)' : ' (free rest day this week)') + '. Your streak is safe. <button class="btn sm" data-action="unrest">Cancel rest day</button></div>';
