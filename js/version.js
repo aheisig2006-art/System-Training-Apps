@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.11.1';
+export const APP_VERSION = '2.11.2';
 export const WHATS_NEW = {
+  '2.11.2': 'Colors update: completed quests, synced status and the cycle green light now use blue and purple instead of green. Red, orange and gold warnings are unchanged.',
   '2.11.1': 'STATUS shows icons for Strength, Agility and Vitality, with HP and Fatigue side by side. Quests now add attribute points (workout to Strength, push-ups and mobility to Agility, steps and run to Vitality). Protein, creatine, water, steps and run restore HP and lower fatigue.',
   '2.11.0': 'STATUS panel: HP, fatigue and the STR, AGI and VIT attributes. Missed days cost HP. At 0 HP the run ends and you restart at E-rank. Cardio log in Training (feeds VIT). Cycle tracking and training statistics collapse. HP starts counting from Nov 14. No sleep log.',
   '2.10.2': 'Release notes after an update now show only on your devices. Other players just see the Install banner.',
