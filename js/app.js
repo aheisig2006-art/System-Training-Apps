@@ -557,7 +557,7 @@ function newWizard(preview) {
   };
 }
 function wizSteps() {
-  const s = [];
+  const s = ['welcome'];
   if (!wiz.preview && !syncUser) s.push('start');
   s.push('hunter', 'source');
   if (wiz.d.source === 'own') s.push('equipment', 'import');
@@ -581,6 +581,9 @@ function renderWizard(o) {
   const typedName = $('wizName') ? $('wizName').value : null;
   let body = '', canNext = true, nextLabel = 'Next';
   switch (step) {
+    case 'welcome':
+      body = '<h2 class="sysmsg">Welcome, Player.</h2><p class="note">Register your hunter to begin.</p>';
+      nextLabel = 'Begin'; break;
     case 'start':
       body = '<h2 class="sysmsg">You have been chosen as a Player.</h2><p class="note">Sign in so your progress is saved and syncs to every device. Already a player? Signing in loads your progress.</p>' + authBox() +
         '<button class="linkbtn" data-action="wizskip" style="margin-top:12px">Continue without an account</button>';
