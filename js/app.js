@@ -223,7 +223,7 @@ function renderQuests() {
   else restLine = '<div class="restbox"><button class="btn" data-action="rest">Take a rest day</button> <span class="note">' + (game.restCostToday ? 'Free rest day used this week. This one costs −' + RULES.EXTRA_REST_XP + ' XP.' : 'Free: your one weekday rest day this week.') + '</span></div>';
 
   html += '<div class="panel"><h1>Daily Quests · ' + esc(dayName(today)) + '</h1>' +
-    '<p class="note">Resets at midnight. Failure to complete your quests on a weekday results in −' + RULES.MISSED_XP + ' XP, −' + RULES.HP_MISSED + ' HP, a broken streak and a penalty quest.</p>' + restLine;
+    '<p class="note">Resets at midnight. Failure to complete the quests results in −' + RULES.MISSED_XP + ' XP and a penalty quest.</p>' + restLine;
   if (prog.custom && !prog.DAY_ORDER.includes(dayName(today)) && !t.weekend && !t.declaredRest) {
     html += '<p class="note">No training scheduled today, so "Work out" is off the list.</p>';
   }
