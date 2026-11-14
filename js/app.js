@@ -205,8 +205,7 @@ function renderHunter() {
     '<span class="sync sync-' + syncState + '">' + syncLabel() + '</span></div>' +
     '<div class="vitals">' + gauge('hp', 'HP', game.hp / game.maxHp * 100, game.hp + ' / ' + game.maxHp, 'hpfill') +
     gauge('fatigue', 'Fatigue', st.fatigue.value, st.fatigue.label + ' · ' + st.fatigue.value, 'fatfill') + '</div>' +
-    '<div class="attrs">' + attr('str', 'Strength') + attr('agi', 'Agility') + attr('vit', 'Vitality') + '</div>' +
-    '<p class="attrnote">Strength: loaded reps, plus bodyweight pulls and presses. Agility: bodyweight and skill reps. Vitality: cardio minutes. Quests add points too. Attributes never award XP.</p>';
+    '<div class="attrs">' + attr('str', 'Strength') + attr('agi', 'Agility') + attr('vit', 'Vitality') + '</div>';
 }
 
 function renderQuests() {
@@ -224,7 +223,7 @@ function renderQuests() {
   else restLine = '<div class="restbox"><button class="btn" data-action="rest">Take a rest day</button> <span class="note">' + (game.restCostToday ? 'Free rest day used this week. This one costs −' + RULES.EXTRA_REST_XP + ' XP.' : 'Free: your one weekday rest day this week.') + '</span></div>';
 
   html += '<div class="panel"><h1>Daily Quests · ' + esc(dayName(today)) + '</h1>' +
-    '<p class="note">Resets at midnight. A missed weekday costs −' + RULES.MISSED_XP + ' XP and breaks your streak.</p>' + restLine;
+    '<p class="note">Resets at midnight. Failure to complete your quests on a weekday results in −' + RULES.MISSED_XP + ' XP, −' + RULES.HP_MISSED + ' HP, a broken streak and a penalty quest.</p>' + restLine;
   if (prog.custom && !prog.DAY_ORDER.includes(dayName(today)) && !t.weekend && !t.declaredRest) {
     html += '<p class="note">No training scheduled today, so "Work out" is off the list.</p>';
   }
@@ -474,6 +473,15 @@ function renderProfile() {
     '<div class="panel"><h1>Hunter</h1><div class="prof">' + (ch ? characterArt(ch, 96) : '') +
       '<div><label class="note" for="nameInput">Hunter name</label><input id="nameInput" maxlength="20" value="' + esc(pv(store, 'name', '')) + '"><br>' +
       '<button class="btn sm" data-action="register" style="margin-top:8px">Change character</button></div></div></div>' +
+    section('rules', 'How the System works', '<div class="panel rules">' +
+      '<p class="note"><b>XP.</b> Each quest awards its XP once checked. Clearing every daily quest adds +' + RULES.BONUS_XP + ' XP. Training adds +' + RULES.SET_XP + ' per set, +' + RULES.SESSION_XP + ' per cleared session and +' + RULES.PR_XP + ' per PR.</p>' +
+      '<p class="note"><b>Streak.</b> Every ' + RULES.STREAK_EVERY + ' cleared days in a row adds +' + RULES.STREAK_BONUS + ' XP.</p>' +
+      '<p class="note"><b>Missed weekday.</b> −' + RULES.MISSED_XP + ' XP, −' + RULES.HP_MISSED + ' HP, your streak resets, and a penalty quest appears. Weekends are automatic rest days.</p>' +
+      '<p class="note"><b>Rest days.</b> One weekday rest day per week is free. Each extra costs −' + RULES.EXTRA_REST_XP + ' XP. A rest day excuses every quest and keeps your streak.</p>' +
+      '<p class="note"><b>Strength.</b> Loaded sets, plus the Work out quest. <b>Agility.</b> Bodyweight and skill reps, plus push-ups and mobility. <b>Vitality.</b> Cardio minutes (2 a minute easy, 3 hard), plus steps and runs.</p>' +
+      '<p class="note"><b>Attributes never award XP.</b> They level on their own track.</p>' +
+      '<p class="note"><b>HP and fatigue.</b> HP is lost on a missed day and regained (+' + RULES.HP_CLEAR + ') on each cleared day. Health quests restore HP and lower fatigue.</p>' +
+    '</div>') +
     '<div class="panel"><h1>Your Plan</h1><p class="note">' +
       (prog.generated && st ? 'Built from your answers: ' + esc(GOALS[st.goal].label) + ' · ' + esc((FOCUS[st.focus] || FOCUS.none).label) + ' · ' + esc(EQUIPMENT[st.equipment].label) + ' · ' + st.days + ' days/week · ' + esc(EXPERIENCE[st.experience].label) + '.'
         : prog.imported ? 'Your own program, ' + prog.DAY_ORDER.length + ' days a week.' : 'Your original program, ' + prog.DAY_ORDER.length + ' days a week.') +
