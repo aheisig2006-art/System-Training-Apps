@@ -19,6 +19,7 @@ export const RULES = {
   BONUS_XP: 100,        // all quests cleared in a day
   MISSED_XP: 20,        // per missed (ghosted) weekday or unrested day
   EXTRA_REST_XP: 50,    // each weekday rest beyond the free one per week
+  QUEST_CUT_XP: 5,      // per quest removed from your list (net, per save)
   STREAK_BONUS: 40,     // every STREAK_EVERY consecutive cleared days
   STREAK_EVERY: 5,
   SET_XP: 10, SESSION_XP: 75, PR_XP: 50,
@@ -81,8 +82,19 @@ export function pv(store, field, dflt) {
 }
 // Quest ids that have been retired; dropped from saved lists.
 const RETIRED_QUESTS = ['sleep'];
-export function getQuests(store) {
-  const stored = pv(store, 'quests', null);
+// The quest list is versioned by day. An edit is saved as days[date].quests = {list, at} and applies from that day on,
+// so past days keep the list they were played with. Before any edit, the original profile list applies.
+export function questSnapshot(store, key) {
+  const days = store.days || {};
+  let best = null;
+  Object.keys(days).forEach(d => {
+    const q = days[d] && days[d].quests;
+    if (q && Array.isArray(q.list) && d <= key && (!best || d > best)) best = d;
+  });
+  return best ? days[best].quests.list : null;
+}
+export function getQuests(store, key = dateKey()) {
+  const stored = questSnapshot(store, key) || pv(store, 'quests', null);
   if (!Array.isArray(stored) || !stored.length) return QUESTS;
   const byId = Object.fromEntries(QUESTS.map(q => [q.id, q]));
   const kept = stored.filter(q => !RETIRED_QUESTS.includes(q.id));
@@ -94,7 +106,7 @@ export function getQuests(store) {
 // Quests that count on a given day ("Work out" only on training days for generated plans).
 export function questsFor(store, key) {
   const prog = getProgram(store);
-  return getQuests(store).filter(q => !(q.trainingOnly || q.id === 'workout') || prog.DAY_ORDER.includes(dayName(key)));
+  return getQuests(store, key).filter(q => !(q.trainingOnly || q.id === 'workout') || prog.DAY_ORDER.includes(dayName(key)));
 }
 export function dayRec(store, key) { return (store.days && store.days[key]) || {}; }
 export function isChecked(store, key, qid) {
@@ -288,7 +300,7 @@ export function compute(store, today = dateKey(), now = Date.now(), hpFrom = RUL
   for (let d = startDate; d <= today; d = addDays(d, 1)) {
     const rec = dayRec(store, d);
     const dayQuests = questsFor(store, d);
-    const doneIds = getQuests(store).filter(q => isChecked(store, d, q.id)).map(q => q.id);
+    const doneIds = getQuests(store, d).filter(q => isChecked(store, d, q.id)).map(q => q.id);
     const allDone = dayQuests.every(q => doneIds.includes(q.id));
     const declaredRest = !!(rec.rest && rec.rest.on) && !isWeekend(d);
     const wk = weekStart(d);
@@ -307,7 +319,8 @@ export function compute(store, today = dateKey(), now = Date.now(), hpFrom = RUL
     else if (d === startDate) status = 'grace';   // the first day never costs anything
     else status = 'missed';
 
-    let delta = getQuests(store).filter(q => doneIds.includes(q.id)).reduce((a, q) => a + q.xp, 0) + (tByDay[d] || 0) + (fx.xpByDay[d] || 0);
+    let delta = getQuests(store, d).filter(q => doneIds.includes(q.id)).reduce((a, q) => a + q.xp, 0) + (tByDay[d] || 0) + (fx.xpByDay[d] || 0)
+      - ((rec.questCuts && rec.questCuts.n) || 0) * RULES.QUEST_CUT_XP;
     let streakBonus = false;
     if (status === 'cleared') {
       delta += RULES.BONUS_XP;
@@ -403,11 +416,10 @@ export function statusStats(store, today = dateKey()) {
   });
   // quest rewards: attribute points and fatigue relief, counted on the day each quest is checked
   const clears = potionEffects(store).clears;
-  const liveIds = getQuests(store).map(q => q.id);
   const relief = {};
   const questDays = [...new Set([...Object.keys(days), ...Object.keys(clears)])];
   questDays.forEach(d => {
-    liveIds.forEach(id => {
+    getQuests(store, d).map(q => q.id).forEach(id => {
       const eff = QUEST_EFFECTS[id];
       if (!eff || !isChecked(store, d, id)) return;
       Object.keys(eff.attr || {}).forEach(k => { pts[k] += eff.attr[k]; });

@@ -1,5 +1,5 @@
 import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
-  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest, periodStarts, CYCLE_PHASE } from './engine.js';
+  getQuests, MANDATORY_QUESTS, isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest, periodStarts, CYCLE_PHASE } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './store.js';
@@ -23,6 +23,7 @@ let swapOpen = null;             // exercise id with the swap list open
 let wiz = null;                  // welcome flow state
 let emailOpen = false;
 let ed = null;                   // plan editor: { plan, origin: 'profile' | 'wizard', note }
+let qed = null;                  // quest editor: { list, base } (base = ids when opened)
 let imp = null;                  // program import screen: { text, busy, msg }
 
 const $ = id => document.getElementById(id);
@@ -490,6 +491,7 @@ function renderProfile() {
       '<p class="note"><b>Missed weekday.</b> −' + RULES.MISSED_XP + ' XP, −' + RULES.HP_MISSED + ' HP, your streak resets, and a penalty quest appears. Weekends are automatic rest days.</p>' +
       '<p class="note"><b>Rest days.</b> One weekday rest day per week is free. Each extra costs −' + RULES.EXTRA_REST_XP + ' XP. A rest day excuses every quest and keeps your streak.</p>' +
       '<p class="note"><b>Strength.</b> Loaded sets, plus the Work out quest. <b>Agility.</b> Bodyweight and skill reps, plus push-ups and mobility. <b>Vitality.</b> Cardio minutes (2 a minute easy, 3 hard), plus steps and runs.</p>' +
+      '<p class="note"><b>Quests.</b> Edit them from Your Plan. Changes start today; past days keep the quests you had. Each quest you remove costs −' + RULES.QUEST_CUT_XP + ' XP. Adding is free.</p>' +
       '<p class="note"><b>Attributes never award XP.</b> They level on their own track.</p>' +
       '<p class="note"><b>HP and fatigue.</b> HP is lost on a missed day and regained (+' + RULES.HP_CLEAR + ') on each cleared day. Health quests restore HP and lower fatigue.</p>' +
     '</div>') +
@@ -497,7 +499,7 @@ function renderProfile() {
       (prog.generated && st ? 'Built from your answers: ' + esc(GOALS[st.goal].label) + ' · ' + esc((FOCUS[st.focus] || FOCUS.none).label) + ' · ' + esc(EQUIPMENT[st.equipment].label) + ' · ' + st.days + ' days/week · ' + esc(EXPERIENCE[st.experience].label) + '.'
         : prog.imported ? 'Your own program, ' + prog.DAY_ORDER.length + ' days a week.' : 'Your original program, ' + prog.DAY_ORDER.length + ' days a week.') +
       ' Logged history and XP stay when you change it.</p>' +
-      '<div class="row"><button class="btn" data-action="editplan">Edit my plan</button><button class="btn" data-action="importplan">Paste or upload a program</button></div></div>' +
+      '<div class="row"><button class="btn" data-action="editplan">Edit my plan</button><button class="btn" data-action="importplan">Paste or upload a program</button><button class="btn" data-action="editquests">Edit quests</button></div></div>' +
     '<div class="panel"><h1>Body &amp; PRs</h1><p class="note">Sets your suggested loads and protein target. Change any time.</p><div id="bodyEdit">' + bodyFormHtml(pv(store, 'body', null)) + '</div><button class="btn" data-action="savebody">Save</button></div>' +
     '<div class="panel"><h1>Cycle Tracking</h1><p class="note">Track period start dates. The tracker lives at the top of the Training tab.</p>' +
       '<label class="switch"><input type="checkbox" id="cycleToggle"' + (ci.on ? ' checked' : '') + '> <span>' + (ci.on ? 'On' : 'Off') + '</span></label></div>' +
@@ -742,6 +744,34 @@ function editorBody() {
     (p.DAY_ORDER.length < 7 ? '<button class="btn sm" data-action="edaddday">+ Add a day</button>' : '') +
     '<p class="note err" id="edMsg"></p>';
 }
+function renderQuestEditor(o) {
+  const ids = qed.list.map(q => q.id);
+  const cut = qed.base.filter(id => !ids.includes(id)).length;
+  const addable = QUEST_PRESETS.filter(p => !ids.includes(p.id));
+  const row = q => '<div class="prow"><span><b>' + esc(q.name) + '</b> <span class="xp">+' + q.xp + ' XP</span><br><span class="muted">' + esc(q.desc || '') + '</span></span>' +
+    (MANDATORY_QUESTS.includes(q.id) ? '<span class="muted">always on</span>' : '<button class="btn xs red" data-action="qrm" data-id="' + esc(q.id) + '">Remove</button>') + '</div>';
+  o.innerHTML = '<div class="modal wiz edmodal"><h1>[ Quests ]</h1>' +
+    '<p class="note">Changes start today; past days keep the quests you had. Each quest you remove costs −' + RULES.QUEST_CUT_XP + ' XP. Adding is free. Protein, creatine and water stay on.</p>' +
+    qed.list.map(row).join('') +
+    (addable.length ? '<h2 class="sysmsg">Add a quest</h2><div class="row">' + addable.map(p => '<button class="btn xs" data-action="qadd" data-id="' + esc(p.id) + '">+ ' + esc(p.name) + ' · ' + p.xp + ' XP</button>').join('') + '</div>' : '') +
+    '<h2 class="sysmsg">Your own quest</h2><div class="row"><input id="qName" maxlength="40" placeholder="Quest name" style="flex:1"><input id="qXp" type="number" inputmode="numeric" min="5" max="150" value="30" style="width:70px" aria-label="XP"><button class="btn sm" data-action="qaddcustom">Add</button></div>' +
+    '<p class="note">' + (cut ? 'Saving removes ' + cut + ' quest' + (cut > 1 ? 's' : '') + ': −' + (cut * RULES.QUEST_CUT_XP) + ' XP.' : 'No quests removed.') + '</p>' +
+    '<p class="note err" id="qMsg"></p>' +
+    '<div class="row wiznav"><button class="btn" data-action="qcancel">Cancel</button><button class="btn primary" data-action="qsave">Save quests</button></div></div>';
+  o.hidden = false;
+}
+function qMsg(m) { const el = $('qMsg'); if (el) el.textContent = m; }
+function saveQuests() {
+  const ids = qed.list.map(q => q.id);
+  if (!ids.length) { qMsg('Keep at least one quest.'); return; }
+  const cut = qed.base.filter(id => !ids.includes(id)).length;   // net removals: add-then-remove costs nothing
+  const at = Date.now();
+  const prev = (store.days[today] && store.days[today].questCuts && store.days[today].questCuts.n) || 0;
+  const writes = [[['days', today, 'quests'], { list: qed.list.map(q => ({ ...q })), at }]];
+  if (cut) writes.push([['days', today, 'questCuts'], { n: prev + cut, at }]);
+  commitMany(writes);
+  qed = null; renderOverlay();
+}
 function renderEditor(o) {
   o.innerHTML = '<div class="modal wiz edmodal"><h1>[ Your Plan ]</h1>' + editorBody() +
     '<div class="row wiznav"><button class="btn" data-action="edcancel">Cancel</button><button class="btn primary" data-action="edsave">Save plan</button></div></div>';
@@ -882,6 +912,7 @@ function renderOverlay() {
     o.hidden = false; return;
   }
   if (ed && !wiz) { renderEditor(o); return; }
+  if (qed && !wiz) { renderQuestEditor(o); return; }
   if (imp && !wiz) { renderImport(o); return; }
   if (wiz && !wiz.preview && pv(store, 'character', null)) wiz = null;   // signed in and existing progress loaded
   if (!wiz && !pv(store, 'character', null) && !hasProgress()) wiz = newWizard(false);
@@ -1020,6 +1051,17 @@ document.addEventListener('click', async e => {
     case 'impread': readImport(false); break;
     case 'edcancel': ed = null; renderOverlay(); break;
     case 'edsave': saveEditor(); break;
+    case 'editquests': { ed = null; const cur = getQuests(store, today); qed = { list: cur.map(q => ({ ...q })), base: cur.map(q => q.id) }; renderOverlay(); break; }
+    case 'qcancel': qed = null; renderOverlay(); break;
+    case 'qadd': { const p = QUEST_PRESETS.find(x => x.id === t.dataset.id); if (p && !qed.list.some(q => q.id === p.id)) qed.list.push({ id: p.id, name: p.name, desc: p.desc, xp: p.xp, group: p.group, ...(p.trainingOnly ? { trainingOnly: true } : {}) }); renderOverlay(); break; }
+    case 'qrm': if (!MANDATORY_QUESTS.includes(t.dataset.id)) qed.list = qed.list.filter(q => q.id !== t.dataset.id); renderOverlay(); break;
+    case 'qaddcustom': {
+      const name = $('qName').value.trim().slice(0, 40), xp = parseInt($('qXp').value, 10);
+      if (!name) { qMsg('Name the quest first.'); break; }
+      if (!(xp >= 5 && xp <= 150)) { qMsg('XP must be between 5 and 150.'); break; }
+      qed.list.push({ id: 'custom-' + Date.now(), name, desc: 'Your own quest.', xp, group: 'Daily' }); renderOverlay(); break;
+    }
+    case 'qsave': saveQuests(); break;
     case 'edaddex': { syncEditorInputs(); const dn = ed.plan.DAY_ORDER[+t.dataset.d]; ed.plan.DAYS[dn].ex.push({ id: '', name: '', sets: 3, reps: '8-12', rpe: '8', m: null, t: 'c' }); edRender(); const inputs = document.querySelectorAll('.edday')[+t.dataset.d].querySelectorAll('.edname'); inputs[inputs.length - 1].focus(); break; }
     case 'edrmex': { syncEditorInputs(); const dn = ed.plan.DAY_ORDER[+t.dataset.d]; ed.plan.DAYS[dn].ex.splice(+t.dataset.e, 1); edRender(); break; }
     case 'edup': { syncEditorInputs(); const dn = ed.plan.DAY_ORDER[+t.dataset.d], i = +t.dataset.e, list = ed.plan.DAYS[dn].ex; [list[i - 1], list[i]] = [list[i], list[i - 1]]; edRender(); break; }

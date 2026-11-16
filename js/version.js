@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.11.7';
+export const APP_VERSION = '2.11.8';
 export const WHATS_NEW = {
+  '2.11.8': 'Edit quests from Your Plan: add any quest, swap or remove. Changes start today, so past days keep their quests. Each quest removed costs 5 XP. Bible reading (+50 XP) is a daily add-in.',
   '2.11.7': 'Cycle tracking: "Started another day" is gone. Log "Period started today" and "Period ended today"; the period length is learned from your ends. The strip now shows menstrual, follicular, ovulation, luteal and late luteal (PMS) phases, and the no-max window follows the logged period.',
   '2.11.6': 'Penalty quests rotate: 50 squats + 50 push-ups, 50 squats + 10 pull-ups, a 1-mile run, or the 5-minute walk. Each missed day gets one of them.',
   '2.11.5': 'New players now see a Welcome, Player screen before registering their hunter. Owners can see it in the new-player preview.',

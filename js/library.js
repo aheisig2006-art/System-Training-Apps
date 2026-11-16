@@ -160,7 +160,8 @@ export const QUEST_PRESETS = [
   { id: 'run', name: 'Go for a 1-mile run', desc: 'One mile, any pace.', xp: 60, on: false, group: 'Daily' },
   { id: 'protein', name: 'Hit your protein target', desc: 'Roughly 0.7–1 g per lb of bodyweight.', xp: 10, on: true, group: 'Nutrition' },
   { id: 'creatine', name: 'Take creatine (5 g)', desc: 'Daily dose taken.', xp: 8, on: true, group: 'Nutrition' },
-  { id: 'water', name: 'Drink 24 oz of water', desc: 'One full bottle.', xp: 5, on: true, group: 'Nutrition' }
+  { id: 'water', name: 'Drink 24 oz of water', desc: 'One full bottle.', xp: 5, on: true, group: 'Nutrition' },
+  { id: 'bible', name: 'Bible reading', desc: 'Scripture, read today.', xp: 50, on: false, group: 'Daily' }
 ];
 
 
