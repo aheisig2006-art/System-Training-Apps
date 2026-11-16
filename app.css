@@ -233,10 +233,10 @@ pre.example{text-align:left;background:#06070d;border:1px dashed #2a3368;border-
 /* v2.3: cycle tracker */
 .cstrip{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px;margin:12px 0 6px}
 .cd{display:inline-block;height:16px;border-radius:3px;background:#1a2045}
-.cd.p{background:#ff4d6d}
-.cd.r{background:#b33a55}
-.cd.s{background:#9b5cff}
-.cd.e{background:#c9a24a}
+.cd.m{background:#ff4d6d}
+.cd.f{background:#3fa9ff}
+.cd.o{background:#5ff2d6}
+.cd.l{background:#9b5cff}
 .cd.n{background:#ffb84d}
 .cd.today{outline:2px solid #fff;outline-offset:1px;box-shadow:0 0 8px #fff}
 .cstrip .cd{height:18px}

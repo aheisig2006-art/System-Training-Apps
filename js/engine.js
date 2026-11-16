@@ -489,12 +489,44 @@ export function migrateLegacy(questsOld, trainingOld, today = dateKey(), now = D
 }
 
 // ---------- cycle ----------
-// Period start dates are logged as days[date].period = {on, at}. Cycle length is
-// the average of the recent gaps (28 until there are two starts). The no-max
-// window runs from mid-PMS (about 5 days before the next period) through day 7.
+// A start is days[date].period = {on, at}. When the period ends, the same record gets end = 'YYYY-MM-DD'.
+// Cycle length is the average of the recent gaps between starts (28 until there are two).
+// Period length is start to end, inclusive (5 until one is logged). Day 1 is the first day of bleeding.
+// Phases: menstrual, follicular, ovulation (about 14 days before the next start, plus or minus a day),
+// luteal, and late luteal (PMS, the last 4 days before the next start).
+// No-max window: late luteal through the period week (day 7, or the logged period if longer).
+export const CYCLE_PHASE = {
+  menstrual:  { label: 'Menstrual', cls: 'm' },
+  follicular: { label: 'Follicular', cls: 'f' },
+  ovulation:  { label: 'Ovulation', cls: 'o' },
+  luteal:     { label: 'Luteal', cls: 'l' },
+  pms:        { label: 'Late luteal (PMS)', cls: 'n' },
+  due:        { label: 'Period due', cls: 'n' },
+  overdue:    { label: 'Period overdue', cls: 'n' }
+};
 function diffDays(a, b) { return Math.round((parse(b) - parse(a)) / 864e5); }
+const spanOf = (a, b) => diffDays(a, b) + 1;
 export function periodStarts(store) {
   return Object.keys(store.days || {}).filter(d => store.days[d].period && store.days[d].period.on).sort();
+}
+// Inclusive lengths of the most recent completed periods (ignores anything implausible).
+function completedLengths(store, today) {
+  const out = [];
+  periodStarts(store).forEach(d => {
+    const e = store.days[d].period.end;
+    if (d <= today && e && e >= d && e <= today) { const n = spanOf(d, e); if (n >= 1 && n <= 14) out.push(n); }
+  });
+  return out.slice(-6);
+}
+function phaseKeyFor(d, length, periodDays) {
+  const pmsFrom = length - 4, ovDay = length - 14;
+  if (d > length + 7) return 'overdue';
+  if (d > length) return 'due';
+  if (d <= periodDays) return 'menstrual';
+  if (d >= pmsFrom) return 'pms';
+  if (d < ovDay - 1) return 'follicular';
+  if (d <= ovDay + 1) return 'ovulation';
+  return 'luteal';
 }
 export function cycleInfo(store, today = dateKey()) {
   const starts = periodStarts(store).filter(d => d <= today);
@@ -509,16 +541,28 @@ export function cycleInfo(store, today = dateKey()) {
   const manual = pv(store, 'cycleLen', null);
   const length = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : (manual || 28);
   const last = starts[starts.length - 1];
+  const lastEnd = store.days[last].period.end || null;
+  const periodEnd = lastEnd && lastEnd >= last && lastEnd <= today ? lastEnd : null;
+  const done = completedLengths(store, today);
+  const periodDays = periodEnd ? spanOf(last, periodEnd)
+    : (done.length ? Math.max(1, Math.round(done.reduce((a, b) => a + b, 0) / done.length)) : 5);
   const day = diffDays(last, today) + 1;
   const nextStart = addDays(last, length);
   const pmsFrom = length - 4;
-  let phase, noMax = false, heavyFrom = null;
-  if (day <= 7) { phase = 'Period week'; noMax = true; heavyFrom = addDays(last, 7); }
-  else if (day >= pmsFrom && day <= length + 7) { phase = day > length ? 'Period due' : 'Pre-period'; noMax = true; heavyFrom = addDays(nextStart, 7); }
-  else if (day >= length - 7) { phase = 'Early pre-period'; }
-  else { phase = 'Strong window'; }
-  // history: each logged start with the length of the cycle that followed it
-  const history = starts.slice(-6).map((d, i, arr) => ({ date: d, length: i < arr.length - 1 ? diffDays(d, arr[i + 1]) : null })).reverse();
-  return { on: true, known: true, day, length, phase, noMax, heavyFrom, nextStart, lastStart: last, estimated: !gaps.length, manual: !gaps.length && !!manual, pmsFrom, history,
-    noMaxFrom: addDays(last, pmsFrom - 1) };
+  const noMaxDays = Math.max(7, periodDays);
+  const phaseKey = phaseKeyFor(day, length, periodDays);
+  const inPeriodWeek = day <= noMaxDays;
+  const noMax = inPeriodWeek || phaseKey === 'pms' || phaseKey === 'due';
+  const heavyFrom = inPeriodWeek ? addDays(last, noMaxDays) : addDays(nextStart, noMaxDays);
+  const strip = [];
+  for (let d = 1; d <= length; d++) strip.push(phaseKeyFor(d, length, periodDays));
+  // history: each logged start with the length of the cycle that followed it and its period length
+  const history = starts.slice(-6).map((d, i, arr) => {
+    const e = store.days[d].period.end;
+    const ok = e && e >= d && e <= today;
+    return { date: d, length: i < arr.length - 1 ? diffDays(d, arr[i + 1]) : null, periodDays: ok ? spanOf(d, e) : null };
+  }).reverse();
+  return { on: true, known: true, day, length, periodDays, periodEnd, phaseKey, phase: CYCLE_PHASE[phaseKey].label,
+    noMax, inPeriodWeek, heavyFrom, nextStart, lastStart: last, estimated: !gaps.length, manual: !gaps.length && !!manual,
+    pmsFrom, ovDay: length - 14, strip, history, noMaxFrom: addDays(last, pmsFrom - 1) };
 }

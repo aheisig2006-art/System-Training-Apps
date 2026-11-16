@@ -1,5 +1,5 @@
 import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
-  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest } from './engine.js';
+  isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest, periodStarts, CYCLE_PHASE } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './store.js';
@@ -273,40 +273,50 @@ function lastSetFor(e) {
 }
 const upper = reps => { const n = String(reps).match(/\d+/g); return n ? +n[n.length - 1] : 0; };
 
-let cycDetails = false, cycDate = false;
+let cycDetails = false;
+const CYCLE_HEAVY_NOTE = { follicular: 'Follicular: good window for heavy work and PR attempts.', ovulation: 'Ovulation: heavy work is fine.', luteal: 'Luteal: heavy work is fine; recovery can run slower.' };
+const CYCLE_LEGEND = [['m', 'menstrual · no max'], ['f', 'follicular'], ['o', 'ovulation'], ['l', 'luteal'], ['n', 'late luteal / PMS · no max']];
+function lastPeriodStart() { const s = periodStarts(store).filter(d => d <= today); return s[s.length - 1] || null; }
 function cycleHtml(ci) {
   if (!ci.on) {
     if (ci.asked) return '';
     return '<div class="panel cyc"><p class="note">Track your cycle and the System flags the days to skip max-effort lifting (mid-PMS through period week) and tells you when heavy work is back on. Warnings only: it never blocks a lift.</p>' +
       '<div class="row"><button class="btn primary" data-action="cycleon">Turn on</button><button class="btn" data-action="cycleoff">Not for me</button></div></div>';
   }
-  const loggedToday = !!(store.days[today] && store.days[today].period && store.days[today].period.on);
-  const logBtns = '<div class="row">' + (loggedToday ? '<button class="btn sm" data-action="periodundo">Logged today · undo</button>' : '<button class="btn sm primary" data-action="period">Period started today</button>') +
-    '<button class="btn sm" data-action="cycdate">' + (cycDate ? 'Cancel' : 'Started another day') + '</button></div>' +
-    (cycDate ? '<div class="row"><input id="pastPeriod" type="date" max="' + today + '" value="' + addDays(today, -1) + '" aria-label="First day of period" style="width:auto"><button class="btn sm" data-action="pastperiod">Log it</button></div>' : '');
+  const startedToday = !!(store.days[today] && store.days[today].period && store.days[today].period.on);
   if (!ci.known) {
-    return '<div class="panel cyc"><p class="note">Log the first day of your most recent period to start.</p>' + logBtns +
+    return '<div class="panel cyc"><p class="note">Log the first day of your most recent period to start.</p>' +
+      '<div class="row"><button class="btn sm primary" data-action="period">Period started today</button></div>' +
+      '<div class="row"><label class="note" for="pastPeriod" style="align-self:center;margin:0">Or pick the first day:</label><input id="pastPeriod" type="date" max="' + today + '" value="' + addDays(today, -1) + '" aria-label="First day of period" style="width:auto"><button class="btn sm" data-action="pastperiod">Log it</button></div>' +
       '<div class="row"><label class="note" for="cycleLen" style="align-self:center;margin:0">Usual cycle length (optional):</label><input id="cycleLen" type="number" min="21" max="40" placeholder="28" value="' + (pv(store, 'cycleLen', '') || '') + '" style="width:80px"> <span class="note" style="align-self:center;margin:0">days</span></div></div>';
   }
   const L = ci.length;
+  const btns = '<div class="row">' +
+    (startedToday ? '<button class="btn sm" data-action="periodundo">Started today · undo</button>' : '<button class="btn sm primary" data-action="period">Period started today</button>') +
+    (ci.periodEnd === today ? '<button class="btn sm" data-action="periodendundo">Ended today · undo</button>' : (!ci.periodEnd ? '<button class="btn sm primary" data-action="periodend">Period ended today</button>' : '')) +
+    '</div>';
   let strip = '';
-  for (let d = 1; d <= L; d++) {
-    const cls = d <= 5 ? 'p' : d <= 7 ? 'r' : d >= ci.pmsFrom ? 'n' : d >= L - 7 ? 'e' : 's';
-    strip += '<span class="cd ' + cls + (d === Math.min(ci.day, L) ? ' today' : '') + '" title="Day ' + d + '"></span>';
-  }
+  ci.strip.forEach((key, i) => {
+    const d = i + 1;
+    strip += '<span class="cd ' + CYCLE_PHASE[key].cls + (d === Math.min(ci.day, L) ? ' today' : '') + '" title="Day ' + d + ' · ' + CYCLE_PHASE[key].label + '"></span>';
+  });
   const msg = ci.noMax
-    ? '<div class="cycwarn">Heads up: no-max-effort window. Keep top sets at RIR 2 or more and save PR attempts. Heavy work is back on from <b>' + prettyDate(ci.heavyFrom) + '</b>. Your call: nothing is blocked.</div>'
-    : '<div class="cycgo">' + (ci.phase === 'Strong window' ? 'Green light: a good window for heavy work and PR attempts.' : 'Heavy work is fine.') + ' The next no-max window starts around <b>' + prettyDate(ci.noMaxFrom) + '</b>.</div>';
+    ? '<div class="cycwarn">Heads up: no-max-effort window (' + (ci.inPeriodWeek ? 'period week' : ci.phase.toLowerCase()) + '). Keep top sets at RIR 2 or more and save PR attempts. Heavy work is back on from <b>' + prettyDate(ci.heavyFrom) + '</b>. Your call: nothing is blocked.</div>'
+    : (ci.phaseKey === 'overdue'
+      ? '<div class="cycnote">Period is overdue. Tap "Period started today" when it arrives.</div>'
+      : '<div class="cycgo">' + (CYCLE_HEAVY_NOTE[ci.phaseKey] || 'Heavy work is fine.') + ' The next no-max window starts around <b>' + prettyDate(ci.noMaxFrom) + '</b>.</div>');
   let details = '';
   if (cycDetails) {
-    details = '<div class="cychist"><b>Logged starts</b>' + ci.history.map(h => '<div class="prow"><span>' + prettyDate(h.date) + (h.length ? ' <span class="muted">· ' + h.length + '-day cycle</span>' : ' <span class="muted">· current</span>') + '</span><button class="btn xs red" data-action="perioddel" data-date="' + h.date + '" aria-label="Remove ' + h.date + '">Remove</button></div>').join('') +
+    details = '<div class="cychist"><b>Logged starts</b>' + ci.history.map(h => '<div class="prow"><span>' + prettyDate(h.date) +
+      (h.periodDays ? ' <span class="muted">· ' + h.periodDays + '-day period</span>' : '') +
+      (h.length ? ' <span class="muted">· ' + h.length + '-day cycle</span>' : ' <span class="muted">· current</span>') + '</span><button class="btn xs red" data-action="perioddel" data-date="' + h.date + '" aria-label="Remove ' + h.date + '">Remove</button></div>').join('') +
       (ci.estimated ? '<div class="row"><label class="note" for="cycleLen" style="align-self:center;margin:0">Usual cycle length:</label><input id="cycleLen" type="number" min="21" max="40" placeholder="28" value="' + (pv(store, 'cycleLen', '') || '') + '" style="width:80px"> <span class="note" style="align-self:center;margin:0">days (used until you log a second start)</span></div>' : '<p class="note">Cycle length is the average of your logged cycles.</p>') + '</div>';
   }
   return '<div class="panel cyc">' +
     '<div class="cycrow"><span>Day <b>' + ci.day + '</b> of ~' + L + ' · <b>' + ci.phase + '</b></span><span class="muted">Next period ~' + prettyDate(ci.nextStart) + '</span></div>' +
-    '<div class="cstrip" role="img" aria-label="Cycle day ' + ci.day + ' of about ' + L + '">' + strip + '</div>' +
-    '<div class="clegend">' + [['p', 'period'], ['r', 'recovery (no max)'], ['s', 'strong'], ['e', 'early pre-period'], ['n', 'pre-period (no max)']].map(([c, l]) => '<span class="li"><span class="cd ' + c + '"></span>' + l + '</span>').join('') + '</div>' +
-    msg + logBtns +
+    '<div class="cstrip" role="img" aria-label="Cycle day ' + ci.day + ' of about ' + L + ', ' + ci.phase + '">' + strip + '</div>' +
+    '<div class="clegend">' + CYCLE_LEGEND.map(([c, l]) => '<span class="li"><span class="cd ' + c + '"></span>' + l + '</span>').join('') + '</div>' +
+    msg + btns +
     '<button class="linkbtn" data-action="cycdetails" style="margin-top:8px">' + (cycDetails ? 'Hide history' : 'History &amp; settings') + '</button>' + details + '</div>';
 }
 
@@ -961,15 +971,16 @@ document.addEventListener('click', async e => {
     case 'restore': editCommit(t.dataset.ex, { removed: false }); break;
     case 'period': commitMany([[['days', today, 'period'], { on: true, at: now }], [['profile', 'cycle'], { v: true, at: now }]]); break;
     case 'periodundo': commit(['days', today, 'period'], { on: false, at: now }); break;
+    case 'periodend': { const s0 = lastPeriodStart(); if (s0) commit(['days', s0, 'period'], { on: true, at: now, end: today }); break; }
+    case 'periodendundo': { const s0 = lastPeriodStart(); if (s0) commit(['days', s0, 'period'], { on: true, at: now }); break; }
     case 'pastperiod': {
       const v = $('pastPeriod').value;
-      if (v && v <= today) { cycDate = false; commitMany([[['days', v, 'period'], { on: true, at: now }], [['profile', 'cycle'], { v: true, at: now }]]); }
+      if (v && v <= today) { commitMany([[['days', v, 'period'], { on: true, at: now }], [['profile', 'cycle'], { v: true, at: now }]]); }
       break;
     }
     case 'perioddel': if (confirm('Remove the period start on ' + prettyDate(t.dataset.date) + '?')) commit(['days', t.dataset.date, 'period'], { on: false, at: now }); break;
     case 'cycleon': setProfile('cycle', true); break;
     case 'cycleoff': setProfile('cycle', false); break;
-    case 'cycdate': cycDate = !cycDate; render(); break;
     case 'cycdetails': cycDetails = !cycDetails; render(); break;
     case 'signin': await runAuth(() => sync.signIn()); break;
     case 'emailtoggle': emailOpen = !emailOpen; if (wiz || !pv(store, 'character', null) || regOpen) renderOverlay(); else render(); break;
