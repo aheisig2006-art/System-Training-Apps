@@ -89,6 +89,7 @@ export function getProgram(store) {
       if (track === 'time' && !TIMED_TEXT.test(e.reps)) e.reps = hold ? LIB[e.lib].hold : TIME_TARGET;
       if (track === 'reps' && TIMED_TEXT.test(e.reps)) e.reps = orig.reps && !TIMED_TEXT.test(orig.reps) ? orig.reps : REPS_TARGET;
       e.track = track;
+      e.unit = (ed && ed.unit) || 'sec';   // timed exercises log in seconds or minutes
       list.push(e);
       ex[e.id] = { ...e, day: d };
     });

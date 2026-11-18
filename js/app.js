@@ -357,7 +357,7 @@ function renderTraining() {
     let lastHtml = '';
     if (last && !skipped) {
       const hit = upper(e.reps) && last.reps >= upper(e.reps) && last.rpe <= 8 && e.lift;
-      lastHtml = '<div class="last">Last: <b>' + setSummary(last, isTimedEx(e)) + '</b>' + effortTag(last.rpe) +
+      lastHtml = '<div class="last">Last: <b>' + setSummary(last, isTimedEx(e), e.unit) + '</b>' + effortTag(last.rpe) +
         (hit ? ' <span class="hint">&rarr; top of range at RIR 2 or more. Add 5 lb next time.</span>' : '') + '</div>';
     }
     const skippable = canSkip(day, e);
@@ -366,6 +366,7 @@ function renderTraining() {
       '<span class="setctl">Sets <button class="btn xs" data-action="setadj" data-ex="' + e.id + '" data-d="-1"' + (e.sets <= 1 ? ' disabled' : '') + ' aria-label="Remove a set">−</button> <b>' + e.sets + '</b> <button class="btn xs" data-action="setadj" data-ex="' + e.id + '" data-d="1"' + (e.sets >= base + 3 ? ' disabled' : '') + ' aria-label="Add a set">+</button></span>' +
       '<button class="btn xs" data-action="swapopen" data-ex="' + e.id + '">' + (swapOpen === e.id ? 'Close' : 'Swap') + '</button>' +
       '<button class="btn xs" data-action="track" data-ex="' + e.id + '">' + (e.track === 'time' ? 'Log by reps' : 'Log by time') + '</button>' +
+      (e.track === 'time' ? '<button class="btn xs" data-action="unit" data-ex="' + e.id + '">' + (e.unit === 'min' ? 'Use seconds' : 'Use minutes') + '</button>' : '') +
       (skipped ? '<button class="btn xs" data-action="unskip" data-ex="' + e.id + '">Unskip</button>'
         : (skippable ? '<button class="btn xs" data-action="skip" data-ex="' + e.id + '"' + (used >= MAX_SKIPS ? ' disabled title="2 skips used"' : '') + '>Skip today</button>' : '<span class="tag">main lift: no skip</span>')) +
       (e.lift ? '<button class="btn xs' + (pr ? ' on' : '') + '" data-action="pr" data-ex="' + e.id + '">' + (pr ? '✓ PR attempt' : 'Go for a PR') + '</button>' : '') +
@@ -443,7 +444,7 @@ function setRow(e, week, i, label) {
   const at = 'data-ex="' + e.id + '" data-i="' + i + '"';
   if (s && !isEditing(week, e.id, i)) {
     const undo = lastActionIs(week, e.id, i) ? '<button class="btn sm red" data-action="undo">Undo</button>' : '';
-    return '<div class="set done"><span>' + label + '</span><span>' + setSummary(s, timed) + effortTag(s.rpe) + '</span>' +
+    return '<div class="set done"><span>' + label + '</span><span>' + setSummary(s, timed, e.unit) + effortTag(s.rpe) + '</span>' +
       '<span class="rowtools"><button class="btn sm" data-action="editset" ' + at + '>Edit</button>' + undo + '</span></div>';
   }
   const rir = s && s.rpe > 0 ? rirOf(s.rpe) : '';
@@ -452,10 +453,11 @@ function setRow(e, week, i, label) {
   if (timed) {
     const tools = s
       ? '<button class="btn sm" data-action="saveedit" ' + at + '>Save</button><button class="btn sm" data-action="canceledit">Cancel</button>'
-      : '<button class="btn sm" data-action="timer" data-timer="' + e.id + '|' + i + '" ' + at + '>' + (running ? '■ ' + mmss(Date.now() - timer.t0) : '▶ Timer') + '</button>' +
+      : '<button class="btn sm" data-action="timer" data-unit="' + (e.unit || 'sec') + '" data-timer="' + e.id + '|' + i + '" ' + at + '>' + (running ? '■ ' + mmss(Date.now() - timer.t0) : '▶ Timer') + '</button>' +
         '<button class="btn sm" data-action="log">Log</button>';
+    const unit = e.unit || 'sec';
     return '<div class="set timed" ' + at + '><span class="lab">' + label + '</span>' +
-      '<input name="secs" type="number" inputmode="numeric" placeholder="sec" value="' + (s ? secsOf(s) : '') + '" aria-label="Seconds, ' + label + '">' +
+      '<input name="secs" type="number" inputmode="decimal" placeholder="' + unit + '" value="' + (s ? timeInBox(s, unit) : '') + '" aria-label="' + (unit === 'min' ? 'Minutes' : 'Seconds') + ', ' + label + '">' +
       rirBox + '<span class="rowtools">' + tools + '</span></div>';
   }
   const tools = s
@@ -471,7 +473,9 @@ function setRow(e, week, i, label) {
 const isTimedEx = e => !!e && e.track === 'time';
 const secsOf = s => (s.secs != null ? s.secs : s.reps);
 const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
-const setSummary = (s, timed) => (timed ? secsOf(s) + ' sec' : (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps);
+const setSummary = (s, timed, unit) => (timed ? (unit === 'min' ? +(secsOf(s) / 60).toFixed(2) + ' min' : secsOf(s) + ' sec') : (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps);
+// The seconds box shows minutes for exercises logged in minutes.
+const timeInBox = (s, unit) => (unit === 'min' ? +(secsOf(s) / 60).toFixed(2) : secsOf(s));
 const isEditing = (week, exId, i) => !!editing && editing.week === +week && editing.ex === exId && String(editing.i) === String(i);
 const lastActionIs = (week, exId, i) => { const la = local().lastAct; return !!la && la.week === +week && la.ex === exId && String(la.i) === String(i); };
 
@@ -481,18 +485,17 @@ function tickTimer() {
   const btn = document.querySelector('[data-timer="' + timer.ex + '|' + timer.i + '"]');
   if (btn) btn.textContent = '■ ' + mmss(Date.now() - timer.t0);
 }
-function startTimer(exId, i) {
+function startTimer(exId, i, unit) {
   stopTimer();
-  timer = { ex: exId, i: String(i), t0: Date.now() };
+  timer = { ex: exId, i: String(i), t0: Date.now(), unit: unit || 'sec' };
   timerIv = setInterval(tickTimer, 250);
 }
-// Stops the stopwatch and puts the elapsed seconds in that row's seconds box. Logging stays a separate tap.
+// Stops the stopwatch and puts the elapsed time (in the exercise's unit) in that row's box. Logging stays a separate tap.
 function stopTimer() {
   if (!timer) return;
   clearInterval(timerIv); timerIv = null;
-  const secs = Math.max(1, Math.round((Date.now() - timer.t0) / 1000));
   const box = document.querySelector('.set[data-ex="' + timer.ex + '"][data-i="' + timer.i + '"] [name=secs]');
-  if (box) box.value = secs;
+  if (box) box.value = timer.unit === 'min' ? +((Date.now() - timer.t0) / 60000).toFixed(2) : Math.max(1, Math.round((Date.now() - timer.t0) / 1000));
   timer = null;
 }
 
@@ -595,7 +598,7 @@ function questDesc(q) {
 // Change one exercise's plan without losing its other edits (swap, removed, set offset).
 function editCommit(id, patch) {
   const cur = (store.profile.edits || {})[id] || {};
-  commit(['profile', 'edits', id], { swap: cur.swap || null, removed: !!cur.removed, sets: cur.sets || 0, track: cur.track || null, ...patch, at: Date.now() });
+  commit(['profile', 'edits', id], { swap: cur.swap || null, removed: !!cur.removed, sets: cur.sets || 0, track: cur.track || null, unit: cur.unit || null, ...patch, at: Date.now() });
 }
 const LIFT_KEYS = ['squat', 'bench', 'deadlift'], REP_KEYS = ['pullups', 'dips', 'pushups'];
 function bodyFormHtml(b) {
@@ -1030,9 +1033,9 @@ document.addEventListener('click', async e => {
       const rpe = isFinite(rirIn) ? 10 - rirIn : 0;   // entered as RIR, stored as RPE
       let fields;
       if (isTimedEx(exDef)) {
-        const secs = parseInt(row.querySelector('[name=secs]').value, 10);
-        if (!secs) { row.querySelector('[name=secs]').focus(); return; }
-        fields = { wt: 0, reps: 0, secs };
+        const raw = parseFloat(row.querySelector('[name=secs]').value);
+        if (!(raw > 0)) { row.querySelector('[name=secs]').focus(); return; }
+        fields = { wt: 0, reps: 0, secs: Math.round(exDef.unit === 'min' ? raw * 60 : raw) };
       } else {
         const wt = parseFloat(row.querySelector('[name=wt]').value) || 0;
         const reps = parseInt(row.querySelector('[name=reps]').value, 10);
@@ -1053,6 +1056,11 @@ document.addEventListener('click', async e => {
     }
     case 'editset': editing = { week: +week, ex: t.dataset.ex, i: t.dataset.i }; render(); break;
     case 'canceledit': editing = null; render(); break;
+    case 'unit': {
+      const exDef = getProgram(store).EX[t.dataset.ex];
+      if (exDef) editCommit(t.dataset.ex, { unit: exDef.unit === 'min' ? 'sec' : 'min' });
+      break;
+    }
     case 'track': {
       // Switch one exercise between logging by time and by reps. Past sets keep their values.
       const exDef = getProgram(store).EX[t.dataset.ex];
@@ -1061,7 +1069,7 @@ document.addEventListener('click', async e => {
     }
     case 'timer': {
       const same = timer && timer.ex === t.dataset.ex && timer.i === t.dataset.i;
-      if (same) stopTimer(); else startTimer(t.dataset.ex, t.dataset.i);
+      if (same) stopTimer(); else startTimer(t.dataset.ex, t.dataset.i, t.dataset.unit);
       render();
       break;
     }
@@ -1070,9 +1078,10 @@ document.addEventListener('click', async e => {
       const la = local().lastAct;
       if (!la) break;
       const path = ['weeks', String(la.week), 'sets', la.ex + '|' + la.i];
-      commit(path, la.prev ? { ...la.prev, at: now } : { ex: la.ex, wt: 0, reps: 0, rpe: 0, del: true, at: now });
+      // Clear the record first: commit() re-renders, and the Undo button must disappear with it.
       setLocal({ lastAct: null });
       editing = null;
+      commit(path, la.prev ? { ...la.prev, at: now } : { ex: la.ex, wt: 0, reps: 0, rpe: 0, del: true, at: now });
       break;
     }
     case 'skip': commit(['weeks', week, 'skips', t.dataset.ex], { on: true, at: now }); break;
@@ -1080,7 +1089,7 @@ document.addEventListener('click', async e => {
     case 'low': commit(['weeks', week, 'low', trainDay], { on: !isLowDay(store, +week, trainDay), at: now }); break;
     case 'pr': commit(['weeks', week, 'pr', t.dataset.ex], { on: !isPrAttempt(store, +week, t.dataset.ex), at: now }); break;
     case 'swapopen': swapOpen = swapOpen === t.dataset.ex ? null : t.dataset.ex; render(); break;
-    case 'swapto': swapOpen = null; editCommit(t.dataset.ex, { swap: t.dataset.lib || null, removed: false, track: null }); break;
+    case 'swapto': swapOpen = null; editCommit(t.dataset.ex, { swap: t.dataset.lib || null, removed: false, track: null, unit: null }); break;
     case 'setadj': {
       const ex = getProgram(store).EX[t.dataset.ex];
       if (!ex) break;

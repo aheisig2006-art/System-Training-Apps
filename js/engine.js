@@ -401,8 +401,8 @@ export function statusStats(store, today = dateKey()) {
   const load = {};
   const addLoad = (d, v) => { if (d) load[d] = (load[d] || 0) + v; };
   liveSets(store).forEach(s => {
-    // Timed sets count their seconds, the same points the old reps-based logs gave.
-    const n = s.secs != null ? +s.secs || 0 : +s.reps || 0;
+    // Timed sets earn half a point per second (a 60-second hold = 30 points). Reps earn one point each.
+    const n = s.secs != null ? Math.round((+s.secs || 0) / 2) : +s.reps || 0;
     if (n > 0) {
       const a = attrsOfSet(s, EX);
       if (a.str) pts.str += n;
