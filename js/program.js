@@ -50,6 +50,9 @@ export const DAYS = {
 export const LIFTS = { deadlift: 'Deadlift', squat: 'Squat', bench: 'Bench' };
 export const TARGETS = { chest: [10, 16], back: [12, 18], quads: [10, 14], hams: [10, 14], shoulders: [8, 14], triceps: [8, 12], biceps: [8, 12], calves: [6, 10] };
 export const MUSCLE_NAMES = { chest: 'Chest', back: 'Back', quads: 'Quads', hams: 'Hamstrings / glutes', shoulders: 'Shoulders', triceps: 'Triceps', biceps: 'Biceps', calves: 'Calves', glutes: 'Glutes', core: 'Core' };
+// A target written in seconds ("30–60 s") makes an exercise timed.
+export const TIMED_TEXT = /\d\s*(s|sec|secs|seconds)\b/i;
+const TIME_TARGET = '30–60 s', REPS_TARGET = '8–12';
 export const EX = {};
 DAY_ORDER.forEach(d => DAYS[d].ex.forEach(e => { EX[e.id] = { ...e, day: d }; }));
 
@@ -79,6 +82,13 @@ export function getProgram(store) {
         e = { ...e, lib: L.id, name: L.name, lift: L.lift, m: L.m || e.m, pat: L.pat, bw: L.eq.every(q => q === 'bw' || q === 'bar' || q === 'dip'),
           reps: L.hold || e.reps, swappedFrom: orig.name, sug: undefined };
       }
+      // How this exercise is logged: 'time' (sets of seconds, e.g. planks) or 'reps'.
+      // Library holds default to time; the player can switch any exercise (profile.edits[id].track).
+      const hold = !!(e.lib && LIB[e.lib] && LIB[e.lib].hold);
+      const track = (ed && ed.track) || (hold ? 'time' : 'reps');
+      if (track === 'time' && !TIMED_TEXT.test(e.reps)) e.reps = hold ? LIB[e.lib].hold : TIME_TARGET;
+      if (track === 'reps' && TIMED_TEXT.test(e.reps)) e.reps = orig.reps && !TIMED_TEXT.test(orig.reps) ? orig.reps : REPS_TARGET;
+      e.track = track;
       list.push(e);
       ex[e.id] = { ...e, day: d };
     });

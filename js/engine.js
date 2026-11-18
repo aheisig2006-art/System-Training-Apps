@@ -123,7 +123,7 @@ export function liveSets(store) {
       const s = sets[k];
       if (s && !s.del) {
         const [ex, i] = k.split('|');
-        out.push({ week: +w, ex, i: i === 'pr' ? 'pr' : +i, wt: s.wt, reps: s.reps, rpe: s.rpe, ts: s.ts, lift: s.lift, lib: s.lib });
+        out.push({ week: +w, ex, i: i === 'pr' ? 'pr' : +i, wt: s.wt, reps: s.reps, secs: s.secs, rpe: s.rpe, ts: s.ts, lift: s.lift, lib: s.lib });
       }
     });
   });
@@ -401,11 +401,12 @@ export function statusStats(store, today = dateKey()) {
   const load = {};
   const addLoad = (d, v) => { if (d) load[d] = (load[d] || 0) + v; };
   liveSets(store).forEach(s => {
-    const reps = +s.reps || 0;
-    if (reps > 0) {
+    // Timed sets count their seconds, the same points the old reps-based logs gave.
+    const n = s.secs != null ? +s.secs || 0 : +s.reps || 0;
+    if (n > 0) {
       const a = attrsOfSet(s, EX);
-      if (a.str) pts.str += reps;
-      if (a.agi) pts.agi += reps;
+      if (a.str) pts.str += n;
+      if (a.agi) pts.agi += n;
     }
     if (s.ts) addLoad(dateKey(new Date(s.ts)), +s.rpe >= 8 ? 1 : 0.5);
   });

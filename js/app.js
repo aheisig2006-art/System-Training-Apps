@@ -365,6 +365,7 @@ function renderTraining() {
     let tools = '<div class="tools">' +
       '<span class="setctl">Sets <button class="btn xs" data-action="setadj" data-ex="' + e.id + '" data-d="-1"' + (e.sets <= 1 ? ' disabled' : '') + ' aria-label="Remove a set">−</button> <b>' + e.sets + '</b> <button class="btn xs" data-action="setadj" data-ex="' + e.id + '" data-d="1"' + (e.sets >= base + 3 ? ' disabled' : '') + ' aria-label="Add a set">+</button></span>' +
       '<button class="btn xs" data-action="swapopen" data-ex="' + e.id + '">' + (swapOpen === e.id ? 'Close' : 'Swap') + '</button>' +
+      '<button class="btn xs" data-action="track" data-ex="' + e.id + '">' + (e.track === 'time' ? 'Log by reps' : 'Log by time') + '</button>' +
       (skipped ? '<button class="btn xs" data-action="unskip" data-ex="' + e.id + '">Unskip</button>'
         : (skippable ? '<button class="btn xs" data-action="skip" data-ex="' + e.id + '"' + (used >= MAX_SKIPS ? ' disabled title="2 skips used"' : '') + '>Skip today</button>' : '<span class="tag">main lift: no skip</span>')) +
       (e.lift ? '<button class="btn xs' + (pr ? ' on' : '') + '" data-action="pr" data-ex="' + e.id + '">' + (pr ? '✓ PR attempt' : 'Go for a PR') + '</button>' : '') +
@@ -447,14 +448,14 @@ function setRow(e, week, i, label) {
   }
   const rir = s && s.rpe > 0 ? rirOf(s.rpe) : '';
   const running = !!timer && timer.ex === e.id && timer.i === String(i);
-  const rirBox = '<input name="rpe" type="number" inputmode="decimal" placeholder="RIR" value="' + rir + '" step="0.5" min="0" max="10" aria-label="Reps in reserve, ' + label + '">';
+  const rirBox = '<input name="rpe" type="number" inputmode="decimal" placeholder="RIR" value="' + rir + '" step="0.5" min="0" max="10" aria-label="Reps in reserve (optional), ' + label + '">';
   if (timed) {
     const tools = s
       ? '<button class="btn sm" data-action="saveedit" ' + at + '>Save</button><button class="btn sm" data-action="canceledit">Cancel</button>'
       : '<button class="btn sm" data-action="timer" data-timer="' + e.id + '|' + i + '" ' + at + '>' + (running ? '■ ' + mmss(Date.now() - timer.t0) : '▶ Timer') + '</button>' +
         '<button class="btn sm" data-action="log">Log</button>';
     return '<div class="set timed" ' + at + '><span class="lab">' + label + '</span>' +
-      '<input name="secs" type="number" inputmode="numeric" placeholder="sec" value="' + (s ? s.reps : '') + '" aria-label="Seconds, ' + label + '">' +
+      '<input name="secs" type="number" inputmode="numeric" placeholder="sec" value="' + (s ? secsOf(s) : '') + '" aria-label="Seconds, ' + label + '">' +
       rirBox + '<span class="rowtools">' + tools + '</span></div>';
   }
   const tools = s
@@ -466,10 +467,11 @@ function setRow(e, week, i, label) {
     rirBox + '<span class="rowtools">' + tools + '</span></div>';
 }
 
-// Timed holds: the target is in seconds ("30–60 s", "45 sec"). Their sets store the seconds in reps.
-const isTimedEx = e => /\d\s*(s|sec|secs|seconds)\b/i.test(String((e && e.reps) || ''));
+// Timed exercises log sets of seconds (track 'time', set in program.js). Older sets logged as reps keep their reps.
+const isTimedEx = e => !!e && e.track === 'time';
+const secsOf = s => (s.secs != null ? s.secs : s.reps);
 const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
-const setSummary = (s, timed) => (timed ? s.reps + ' sec' : (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps);
+const setSummary = (s, timed) => (timed ? secsOf(s) + ' sec' : (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps);
 const isEditing = (week, exId, i) => !!editing && editing.week === +week && editing.ex === exId && String(editing.i) === String(i);
 const lastActionIs = (week, exId, i) => { const la = local().lastAct; return !!la && la.week === +week && la.ex === exId && String(la.i) === String(i); };
 
@@ -593,7 +595,7 @@ function questDesc(q) {
 // Change one exercise's plan without losing its other edits (swap, removed, set offset).
 function editCommit(id, patch) {
   const cur = (store.profile.edits || {})[id] || {};
-  commit(['profile', 'edits', id], { swap: cur.swap || null, removed: !!cur.removed, sets: cur.sets || 0, ...patch, at: Date.now() });
+  commit(['profile', 'edits', id], { swap: cur.swap || null, removed: !!cur.removed, sets: cur.sets || 0, track: cur.track || null, ...patch, at: Date.now() });
 }
 const LIFT_KEYS = ['squat', 'bench', 'deadlift'], REP_KEYS = ['pullups', 'dips', 'pushups'];
 function bodyFormHtml(b) {
@@ -1030,13 +1032,13 @@ document.addEventListener('click', async e => {
       if (isTimedEx(exDef)) {
         const secs = parseInt(row.querySelector('[name=secs]').value, 10);
         if (!secs) { row.querySelector('[name=secs]').focus(); return; }
-        fields = { wt: 0, reps: secs };
+        fields = { wt: 0, reps: 0, secs };
       } else {
         const wt = parseFloat(row.querySelector('[name=wt]').value) || 0;
         const reps = parseInt(row.querySelector('[name=reps]').value, 10);
         if (!reps) { row.querySelector('[name=reps]').focus(); return; }
         if (!wt && !exDef.bw) { row.querySelector('[name=wt]').focus(); return; }
-        fields = { wt, reps };
+        fields = { wt, reps, secs: null };
       }
       if (a === 'saveedit') {
         const cur = setAt(store, week, exId, i);
@@ -1051,6 +1053,12 @@ document.addEventListener('click', async e => {
     }
     case 'editset': editing = { week: +week, ex: t.dataset.ex, i: t.dataset.i }; render(); break;
     case 'canceledit': editing = null; render(); break;
+    case 'track': {
+      // Switch one exercise between logging by time and by reps. Past sets keep their values.
+      const exDef = getProgram(store).EX[t.dataset.ex];
+      if (exDef) editCommit(t.dataset.ex, { track: exDef.track === 'time' ? 'reps' : 'time' });
+      break;
+    }
     case 'timer': {
       const same = timer && timer.ex === t.dataset.ex && timer.i === t.dataset.i;
       if (same) stopTimer(); else startTimer(t.dataset.ex, t.dataset.i);
@@ -1072,7 +1080,7 @@ document.addEventListener('click', async e => {
     case 'low': commit(['weeks', week, 'low', trainDay], { on: !isLowDay(store, +week, trainDay), at: now }); break;
     case 'pr': commit(['weeks', week, 'pr', t.dataset.ex], { on: !isPrAttempt(store, +week, t.dataset.ex), at: now }); break;
     case 'swapopen': swapOpen = swapOpen === t.dataset.ex ? null : t.dataset.ex; render(); break;
-    case 'swapto': swapOpen = null; editCommit(t.dataset.ex, { swap: t.dataset.lib || null, removed: false }); break;
+    case 'swapto': swapOpen = null; editCommit(t.dataset.ex, { swap: t.dataset.lib || null, removed: false, track: null }); break;
     case 'setadj': {
       const ex = getProgram(store).EX[t.dataset.ex];
       if (!ex) break;
