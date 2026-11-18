@@ -376,9 +376,11 @@ function renderTraining() {
       (e.lift ? '<button class="btn xs' + (pr ? ' on' : '') + '" data-action="pr" data-ex="' + e.id + '">' + (pr ? '✓ PR attempt' : 'Go for a PR') + '</button>' : '') +
       '</div>';
     if (swapOpen === e.id) {
-      const opts = LIBRARY.filter(x => x.pat && x.pat === e.pat && x.id !== e.lib && x.name.toLowerCase() !== e.name.toLowerCase() && x.eq.every(q => prog.has.includes(q))).sort((a, b) => a.d - b.d);
+      // The owner's plan has no backpack / water-jug lateral raise (other players still see it).
+      const opts = LIBRARY.filter(x => x.pat && x.pat === e.pat && x.id !== e.lib && x.name.toLowerCase() !== e.name.toLowerCase() && x.eq.every(q => prog.has.includes(q)) && !(x.id === 'bw_lateral' && isOwner(syncUser))).sort((a, b) => a.d - b.d);
       tools += '<div class="swaplist"><p class="note">Swap for the rest of your plan (logged sets stay in your history):</p>' +
         (opts.length ? opts.map(o => '<button class="opt sm" data-action="swapto" data-ex="' + e.id + '" data-lib="' + o.id + '">' + esc(o.name) + '</button>').join('') : '<p class="note">No alternatives for this one with your equipment.</p>') +
+        '<div class="row"><input class="writeIn" maxlength="40" placeholder="Or write in your own, e.g. dips" aria-label="Write in an exercise"><button class="btn sm" data-action="swapwrite" data-ex="' + e.id + '">Add</button></div>' +
         (e.swappedFrom ? '<button class="opt sm" data-action="swapto" data-ex="' + e.id + '" data-lib="">Back to original: ' + esc(e.swappedFrom) + '</button>' : '') + '</div>';
     }
     let rows = '';
@@ -632,7 +634,7 @@ function questDesc(q) {
 // Change one exercise's plan without losing its other edits (swap, removed, set offset).
 function editCommit(id, patch) {
   const cur = (store.profile.edits || {})[id] || {};
-  commit(['profile', 'edits', id], { swap: cur.swap || null, removed: !!cur.removed, sets: cur.sets || 0, track: cur.track || null, unit: cur.unit || null, ...patch, at: Date.now() });
+  commit(['profile', 'edits', id], { swap: cur.swap || null, custom: cur.custom || null, removed: !!cur.removed, sets: cur.sets || 0, track: cur.track || null, unit: cur.unit || null, ...patch, at: Date.now() });
 }
 const LIFT_KEYS = ['squat', 'bench', 'deadlift'], REP_KEYS = ['pullups', 'dips', 'pushups'];
 function bodyFormHtml(b) {
@@ -1125,7 +1127,16 @@ document.addEventListener('click', async e => {
     case 'low': commit(['weeks', week, 'low', trainDay], { on: !isLowDay(store, +week, trainDay), at: now }); break;
     case 'pr': commit(['weeks', week, 'pr', t.dataset.ex], { on: !isPrAttempt(store, +week, t.dataset.ex), at: now }); break;
     case 'swapopen': swapOpen = swapOpen === t.dataset.ex ? null : t.dataset.ex; render(); break;
-    case 'swapto': swapOpen = null; editCommit(t.dataset.ex, { swap: t.dataset.lib || null, removed: false, track: null, unit: null }); break;
+    case 'swapto': swapOpen = null; editCommit(t.dataset.ex, { swap: t.dataset.lib || null, custom: null, removed: false, track: null, unit: null }); break;
+    case 'swapwrite': {
+      // Write-in swap: any exercise name. Keeps the slot's muscle group and set count; reps / timed buttons work as usual.
+      const inp = t.closest('.row') && t.closest('.row').querySelector('.writeIn');
+      const name = inp ? inp.value.trim().replace(/\s+/g, ' ').slice(0, 40) : '';
+      if (!name) break;
+      swapOpen = null;
+      editCommit(t.dataset.ex, { swap: null, custom: name, removed: false, track: null, unit: null });
+      break;
+    }
     case 'setadj': {
       const ex = getProgram(store).EX[t.dataset.ex];
       if (!ex) break;
@@ -1245,6 +1256,7 @@ document.addEventListener('change', e => {
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && e.target.id === 'customQuest') { e.preventDefault(); document.querySelector('[data-action="wizaddquest"]').click(); }
+  if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('writeIn')) { e.preventDefault(); e.target.closest('.row').querySelector('[data-action="swapwrite"]').click(); }
 });
 
 function doRestart() {

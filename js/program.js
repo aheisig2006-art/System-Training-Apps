@@ -82,6 +82,10 @@ export function getProgram(store) {
         e = { ...e, lib: L.id, name: L.name, lift: L.lift, m: L.m || e.m, pat: L.pat, bw: L.eq.every(q => q === 'bw' || q === 'bar' || q === 'dip'),
           reps: L.hold || e.reps, swappedFrom: orig.name, sug: undefined };
       }
+      // Write-in exercise (e.g. "Dips"): a name typed in, not from the library. No lift, so no PR or suggested load.
+      if (ed && ed.custom && !ed.swap) {
+        e = { ...e, id: orig.id, lib: undefined, lift: undefined, sug: undefined, name: ed.custom, swappedFrom: orig.name };
+      }
       // How this exercise is logged: 'time' (sets of seconds, e.g. planks) or 'reps'.
       // Library holds default to time; the player can switch any exercise (profile.edits[id].track).
       const hold = !!(e.lib && LIB[e.lib] && LIB[e.lib].hold);
