@@ -2,12 +2,12 @@ import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, set
   getQuests, MANDATORY_QUESTS, isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest, periodStarts, CYCLE_PHASE } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
-import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal } from './store.js';
+import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal, getAt } from './store.js';
 import { CHARACTERS, characterArt, applyFrame } from './characters.js';
 import { parseProgram, pdfToText, makeExercise, refreshTargets, ALL_DAYS } from './importer.js';
 import { APP_VERSION, WHATS_NEW } from './version.js';
 import { track, setView, setSender, flush } from './track.js';
-import { rirText, rirInText, rpeFromRirText, effortTag } from './effort.js';
+import { rirOf, rirText, rirInText, rpeFromRirText, effortTag } from './effort.js';
 import { isOwner } from './owner.js';
 
 let { store } = loadStore();
@@ -25,6 +25,8 @@ let emailOpen = false;
 let ed = null;                   // plan editor: { plan, origin: 'profile' | 'wizard', note }
 let qed = null;                  // quest editor: { list, base } (base = ids when opened)
 let imp = null;                  // program import screen: { text, busy, msg }
+let editing = null;              // logged set being edited: { week, ex, i }
+let timer = null, timerIv = null; // stopwatch for a timed set: { ex, i, t0 }
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -355,7 +357,7 @@ function renderTraining() {
     let lastHtml = '';
     if (last && !skipped) {
       const hit = upper(e.reps) && last.reps >= upper(e.reps) && last.rpe <= 8 && e.lift;
-      lastHtml = '<div class="last">Last: <b>' + (last.wt > 0 ? last.wt + ' × ' : 'BW × ') + last.reps + '</b>' + effortTag(last.rpe) +
+      lastHtml = '<div class="last">Last: <b>' + setSummary(last, isTimedEx(e)) + '</b>' + effortTag(last.rpe) +
         (hit ? ' <span class="hint">&rarr; top of range at RIR 2 or more. Add 5 lb next time.</span>' : '') + '</div>';
     }
     const skippable = canSkip(day, e);
@@ -433,14 +435,73 @@ function cardioPanel() {
     '<div class="row cardiorow"><input id="cardioMin" type="number" inputmode="numeric" min="0" max="300" placeholder="minutes" aria-label="Cardio minutes">' +
     '<label class="note cardiohard"><input type="checkbox" id="cardioHard"> Hard</label><button class="btn sm" data-action="cardio">Log cardio</button></div></div>';
 }
+// Set rows. A logged set can be edited in place. Undo reverses only the latest set action (log or edit).
 function setRow(e, week, i, label) {
   const s = setAt(store, week, e.id, i);
-  if (s) return '<div class="set done"><span>' + label + '</span><span>' + (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps + effortTag(s.rpe) + '</span><button class="btn sm red" data-action="undo" data-ex="' + e.id + '" data-i="' + i + '">undo</button></div>';
-  return '<div class="set" data-ex="' + e.id + '" data-i="' + i + '"><span class="lab">' + label + '</span>' +
-    '<input name="wt" type="number" inputmode="decimal" placeholder="' + (e.bw ? '+lb' : (suggestedLoad(e, week) || 'lb')) + '" aria-label="' + (e.bw ? 'Added weight (optional)' : 'Weight') + ', ' + label + '">' +
-    '<input name="reps" type="number" inputmode="numeric" placeholder="reps" aria-label="Reps, ' + label + '">' +
-    '<input name="rpe" type="number" inputmode="decimal" placeholder="RIR" step="0.5" min="0" max="10" aria-label="Reps in reserve, ' + label + '">' +
-    '<button class="btn sm" data-action="log">Log</button></div>';
+  const timed = isTimedEx(e);
+  const at = 'data-ex="' + e.id + '" data-i="' + i + '"';
+  if (s && !isEditing(week, e.id, i)) {
+    const undo = lastActionIs(week, e.id, i) ? '<button class="btn sm red" data-action="undo">Undo</button>' : '';
+    return '<div class="set done"><span>' + label + '</span><span>' + setSummary(s, timed) + effortTag(s.rpe) + '</span>' +
+      '<span class="rowtools"><button class="btn sm" data-action="editset" ' + at + '>Edit</button>' + undo + '</span></div>';
+  }
+  const rir = s && s.rpe > 0 ? rirOf(s.rpe) : '';
+  const running = !!timer && timer.ex === e.id && timer.i === String(i);
+  const rirBox = '<input name="rpe" type="number" inputmode="decimal" placeholder="RIR" value="' + rir + '" step="0.5" min="0" max="10" aria-label="Reps in reserve, ' + label + '">';
+  if (timed) {
+    const tools = s
+      ? '<button class="btn sm" data-action="saveedit" ' + at + '>Save</button><button class="btn sm" data-action="canceledit">Cancel</button>'
+      : '<button class="btn sm" data-action="timer" data-timer="' + e.id + '|' + i + '" ' + at + '>' + (running ? '■ ' + mmss(Date.now() - timer.t0) : '▶ Timer') + '</button>' +
+        '<button class="btn sm" data-action="log">Log</button>';
+    return '<div class="set timed" ' + at + '><span class="lab">' + label + '</span>' +
+      '<input name="secs" type="number" inputmode="numeric" placeholder="sec" value="' + (s ? s.reps : '') + '" aria-label="Seconds, ' + label + '">' +
+      rirBox + '<span class="rowtools">' + tools + '</span></div>';
+  }
+  const tools = s
+    ? '<button class="btn sm" data-action="saveedit" ' + at + '>Save</button><button class="btn sm" data-action="canceledit">Cancel</button>'
+    : '<button class="btn sm" data-action="log">Log</button>';
+  return '<div class="set" ' + at + '><span class="lab">' + label + '</span>' +
+    '<input name="wt" type="number" inputmode="decimal" placeholder="' + (e.bw ? '+lb' : (suggestedLoad(e, week) || 'lb')) + '" value="' + (s && s.wt > 0 ? s.wt : '') + '" aria-label="' + (e.bw ? 'Added weight (optional)' : 'Weight') + ', ' + label + '">' +
+    '<input name="reps" type="number" inputmode="numeric" placeholder="reps" value="' + (s ? s.reps : '') + '" aria-label="Reps, ' + label + '">' +
+    rirBox + '<span class="rowtools">' + tools + '</span></div>';
+}
+
+// Timed holds: the target is in seconds ("30–60 s", "45 sec"). Their sets store the seconds in reps.
+const isTimedEx = e => /\d\s*(s|sec|secs|seconds)\b/i.test(String((e && e.reps) || ''));
+const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+const setSummary = (s, timed) => (timed ? s.reps + ' sec' : (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps);
+const isEditing = (week, exId, i) => !!editing && editing.week === +week && editing.ex === exId && String(editing.i) === String(i);
+const lastActionIs = (week, exId, i) => { const la = local().lastAct; return !!la && la.week === +week && la.ex === exId && String(la.i) === String(i); };
+
+// Stopwatch for timed sets. Uses the clock, so it stays right when the phone sleeps.
+function tickTimer() {
+  if (!timer) return;
+  const btn = document.querySelector('[data-timer="' + timer.ex + '|' + timer.i + '"]');
+  if (btn) btn.textContent = '■ ' + mmss(Date.now() - timer.t0);
+}
+function startTimer(exId, i) {
+  stopTimer();
+  timer = { ex: exId, i: String(i), t0: Date.now() };
+  timerIv = setInterval(tickTimer, 250);
+}
+// Stops the stopwatch and puts the elapsed seconds in that row's seconds box. Logging stays a separate tap.
+function stopTimer() {
+  if (!timer) return;
+  clearInterval(timerIv); timerIv = null;
+  const secs = Math.max(1, Math.round((Date.now() - timer.t0) / 1000));
+  const box = document.querySelector('.set[data-ex="' + timer.ex + '"][data-i="' + timer.i + '"] [name=secs]');
+  if (box) box.value = secs;
+  timer = null;
+}
+
+// Every set change (log or edit) passes through here, so Undo can restore exactly the state before it.
+function recordAndCommit(week, exId, i, leaf) {
+  const path = ['weeks', String(week), 'sets', exId + '|' + i];
+  if (timer && timer.ex === exId && timer.i === String(i)) stopTimer();
+  const cur = getAt(store, path);
+  setLocal({ lastAct: { week: +week, ex: exId, i: String(i), prev: cur ? JSON.parse(JSON.stringify(cur)) : null } });
+  editing = null;
+  commit(path, leaf);
 }
 
 function authBox() {
@@ -955,28 +1016,55 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'unrest': commit(['days', today, 'rest'], { on: false, at: now }); break;
-    case 'week': setProfile('week', Math.max(1, pv(store, 'week', 1) + parseInt(t.dataset.d, 10))); break;
-    case 'tday': trainDay = t.dataset.d; swapOpen = null; setLocal({ trainDay }); render(); break;
-    case 'log': {
+    case 'week': editing = null; setProfile('week', Math.max(1, pv(store, 'week', 1) + parseInt(t.dataset.d, 10))); break;
+    case 'tday': trainDay = t.dataset.d; swapOpen = null; editing = null; setLocal({ trainDay }); render(); break;
+    case 'log':
+    case 'saveedit': {
+      // Logging a new set, or saving changes to a logged one. Both read the same fields.
       const row = t.closest('.set');
-      const exDef = getProgram(store).EX[row.dataset.ex] || {};
-      const wt = parseFloat(row.querySelector('[name=wt]').value) || 0;
-      const reps = parseInt(row.querySelector('[name=reps]').value, 10);
+      const exId = row.dataset.ex, i = row.dataset.i;
+      const exDef = getProgram(store).EX[exId] || {};
       const rirIn = parseFloat(row.querySelector('[name=rpe]').value);
       const rpe = isFinite(rirIn) ? 10 - rirIn : 0;   // entered as RIR, stored as RPE
-      if (!reps) { row.querySelector('[name=reps]').focus(); return; }
-      if (!wt && !exDef.bw) { row.querySelector('[name=wt]').focus(); return; }
-      const i = row.dataset.i;
-      const leaf = { ex: row.dataset.ex, wt, reps, rpe, ts: now, del: false, at: now };
+      let fields;
+      if (isTimedEx(exDef)) {
+        const secs = parseInt(row.querySelector('[name=secs]').value, 10);
+        if (!secs) { row.querySelector('[name=secs]').focus(); return; }
+        fields = { wt: 0, reps: secs };
+      } else {
+        const wt = parseFloat(row.querySelector('[name=wt]').value) || 0;
+        const reps = parseInt(row.querySelector('[name=reps]').value, 10);
+        if (!reps) { row.querySelector('[name=reps]').focus(); return; }
+        if (!wt && !exDef.bw) { row.querySelector('[name=wt]').focus(); return; }
+        fields = { wt, reps };
+      }
+      if (a === 'saveedit') {
+        const cur = setAt(store, week, exId, i);
+        if (cur) recordAndCommit(week, exId, i, { ...cur, ...fields, rpe, at: now, del: false });
+        break;
+      }
+      const leaf = { ex: exId, ...fields, rpe, ts: now, del: false, at: now };
       if (exDef.lib) leaf.lib = exDef.lib;
       leaf.lift = exDef.lift || null;
-      commit(['weeks', week, 'sets', row.dataset.ex + '|' + i], leaf);
+      recordAndCommit(week, exId, i, leaf);
+      break;
+    }
+    case 'editset': editing = { week: +week, ex: t.dataset.ex, i: t.dataset.i }; render(); break;
+    case 'canceledit': editing = null; render(); break;
+    case 'timer': {
+      const same = timer && timer.ex === t.dataset.ex && timer.i === t.dataset.i;
+      if (same) stopTimer(); else startTimer(t.dataset.ex, t.dataset.i);
+      render();
       break;
     }
     case 'undo': {
-      const key = t.dataset.ex + '|' + t.dataset.i;
-      const s = setAt(store, week, t.dataset.ex, t.dataset.i === 'pr' ? 'pr' : +t.dataset.i);
-      if (s) commit(['weeks', week, 'sets', key], { ...s, del: true, at: now });
+      // One step back only: restores the set exactly as it was before the latest log or edit.
+      const la = local().lastAct;
+      if (!la) break;
+      const path = ['weeks', String(la.week), 'sets', la.ex + '|' + la.i];
+      commit(path, la.prev ? { ...la.prev, at: now } : { ex: la.ex, wt: 0, reps: 0, rpe: 0, del: true, at: now });
+      setLocal({ lastAct: null });
+      editing = null;
       break;
     }
     case 'skip': commit(['weeks', week, 'skips', t.dataset.ex], { on: true, at: now }); break;
