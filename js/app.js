@@ -463,7 +463,9 @@ function setRow(e, week, i, label) {
       : '<button class="btn sm" data-action="timer" data-unit="' + unit + '" data-timer="' + e.id + '|' + i + '" ' + at + '>' + (running ? '■ ' + mmss(Date.now() - timer.t0) : '▶ Timer') + '</button>' +
         '<button class="btn sm" data-action="log">Log</button>';
     return '<div class="set timed" ' + at + '><span class="lab">' + label + '</span>' +
-      '<input name="secs" type="number" inputmode="decimal" placeholder="' + unit + '" value="' + (cur ? timeInBox(cur, unit) : '') + '" aria-label="' + (unit === 'min' ? 'Minutes' : 'Seconds') + ', ' + label + '">' +
+      (unit === 'min'
+        ? '<input name="secs" type="text" inputmode="numeric" placeholder="m:ss" value="' + (cur ? timeInBox(cur, unit) : '') + '" aria-label="Time, minutes and seconds, ' + label + '">'
+        : '<input name="secs" type="number" inputmode="decimal" placeholder="sec" value="' + (cur ? timeInBox(cur, unit) : '') + '" aria-label="Seconds, ' + label + '">') +
       rirBox + '<span class="rowtools">' + tools + '</span></div>';
   }
   const tools = s
@@ -479,9 +481,20 @@ function setRow(e, week, i, label) {
 const isTimedEx = e => !!e && e.track === 'time';
 const secsOf = s => (s.secs != null ? s.secs : s.reps);
 const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
-const setSummary = (s, timed, unit) => (timed ? (unit === 'min' ? +(secsOf(s) / 60).toFixed(2) + ' min' : secsOf(s) + ' sec') : (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps);
+const setSummary = (s, timed, unit) => (timed ? (unit === 'min' ? mmss(secsOf(s) * 1000) : secsOf(s) + ' sec') : (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps);
 // The seconds box shows minutes for exercises logged in minutes.
-const timeInBox = (s, unit) => { const n = secsOf(s); if (!n) return ''; return unit === 'min' ? +(n / 60).toFixed(2) : n; };
+const timeInBox = (s, unit) => { const n = secsOf(s); if (!n) return ''; return unit === 'min' ? mmss(n * 1000) : n; };
+// Reads a time typed in minutes mode: 1:30, 130 (last two digits are seconds), 90 (seconds), or 1.5 (decimal minutes).
+const parseClock = str => {
+  const t = String(str || '').trim();
+  if (!t) return null;
+  let total;
+  if (t.includes('.')) total = parseFloat(t) * 60;
+  else if (t.includes(':')) { const [a, b = '0'] = t.split(':'); total = (+a) * 60 + (+b); }
+  else { const d = t.replace(/\D/g, ''); total = d.length <= 2 ? +d : (+d.slice(0, -2)) * 60 + (+d.slice(-2)); }
+  total = Math.round(total);
+  return isFinite(total) && total > 0 ? total : null;
+};
 const isEditing = (week, exId, i) => !!editing && editing.week === +week && editing.ex === exId && String(editing.i) === String(i);
 
 // Stopwatch for timed sets. Uses the clock, so it stays right when the phone sleeps.
@@ -500,7 +513,7 @@ function stopTimer() {
   if (!timer) return;
   clearInterval(timerIv); timerIv = null;
   const box = document.querySelector('.set[data-ex="' + timer.ex + '"][data-i="' + timer.i + '"] [name=secs]');
-  if (box) box.value = timer.unit === 'min' ? +((Date.now() - timer.t0) / 60000).toFixed(2) : Math.max(1, Math.round((Date.now() - timer.t0) / 1000));
+  if (box) box.value = timer.unit === 'min' ? mmss(Math.max(1000, Date.now() - timer.t0)) : Math.max(1, Math.round((Date.now() - timer.t0) / 1000));
   timer = null;
 }
 
@@ -1054,9 +1067,10 @@ document.addEventListener('click', async e => {
       const rpe = isFinite(rirIn) ? 10 - rirIn : 0;   // entered as RIR, stored as RPE
       let fields;
       if (isTimedEx(exDef)) {
-        const raw = parseFloat(row.querySelector('[name=secs]').value);
-        if (!(raw > 0)) { row.querySelector('[name=secs]').focus(); return; }
-        fields = { wt: 0, reps: 0, secs: Math.round(exDef.unit === 'min' ? raw * 60 : raw) };
+        const box = row.querySelector('[name=secs]');
+        const secsVal = exDef.unit === 'min' ? parseClock(box.value) : (parseFloat(box.value) > 0 ? Math.round(parseFloat(box.value)) : null);
+        if (!secsVal) { box.focus(); return; }
+        fields = { wt: 0, reps: 0, secs: secsVal };
       } else {
         const wt = parseFloat(row.querySelector('[name=wt]').value) || 0;
         const reps = parseInt(row.querySelector('[name=reps]').value, 10);

@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.11.9';
+export const APP_VERSION = '2.11.10';
 export const WHATS_NEW = {
+  '2.11.10': 'Minutes timers now log minutes and seconds: type 1:30, 130 or 90, and the Timer fills it in the same format. Seconds-only still works for short holds.',
   '2.11.9': 'Timed holds (plank, wall sit, skill holds) log sets of seconds with a Timer. Any exercise can switch between logging by time and by reps, and timed work can be logged in seconds or minutes. Timed sets earn half a point per second. RIR is optional. Edit a logged set to fix it in place. Undo takes back one step at a time: RIR, then time or reps, then weight. The set reopens with its values, so you can fix it.',
   '2.11.8': 'Edit quests from Your Plan: add any quest, swap or remove. Changes start today, so past days keep their quests. Each quest removed costs 5 XP. Bible reading (+50 XP) is a daily add-in.',
   '2.11.7': 'Cycle tracking: "Started another day" is gone. Log "Period started today" and "Period ended today"; the period length is learned from your ends. The strip now shows menstrual, follicular, ovulation, luteal and late luteal (PMS) phases, and the no-max window follows the logged period.',
