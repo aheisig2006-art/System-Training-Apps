@@ -121,7 +121,7 @@ export function liveSets(store) {
     const sets = weeks[w].sets || {};
     Object.keys(sets).forEach(k => {
       const s = sets[k];
-      if (s && !s.del) {
+      if (s && !s.del && !s.open) {
         const [ex, i] = k.split('|');
         out.push({ week: +w, ex, i: i === 'pr' ? 'pr' : +i, wt: s.wt, reps: s.reps, secs: s.secs, rpe: s.rpe, ts: s.ts, lift: s.lift, lib: s.lib });
       }
@@ -129,7 +129,14 @@ export function liveSets(store) {
   });
   return out;
 }
+// The logged set (open drafts left by Undo are not logged).
 export function setAt(store, week, exId, i) {
+  const w = store.weeks && store.weeks[week];
+  const s = w && w.sets && w.sets[exId + '|' + i];
+  return s && !s.del && !s.open ? s : null;
+}
+// The stored set, including an open draft.
+export function rawSetAt(store, week, exId, i) {
   const w = store.weeks && store.weeks[week];
   const s = w && w.sets && w.sets[exId + '|' + i];
   return s && !s.del ? s : null;

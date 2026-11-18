@@ -1,4 +1,4 @@
-import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
+import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, rawSetAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
   getQuests, MANDATORY_QUESTS, isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest, periodStarts, CYCLE_PHASE } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
@@ -26,6 +26,7 @@ let ed = null;                   // plan editor: { plan, origin: 'profile' | 'wi
 let qed = null;                  // quest editor: { list, base } (base = ids when opened)
 let imp = null;                  // program import screen: { text, busy, msg }
 let editing = null;              // logged set being edited: { week, ex, i }
+let skipTyped = false;           // the next redraw takes the boxes from the data, not from what was typed
 let timer = null, timerIv = null; // stopwatch for a timed set: { ex, i, t0 }
 
 const $ = id => document.getElementById(id);
@@ -323,6 +324,9 @@ function cycleHtml(ci) {
     '<button class="linkbtn" data-action="cycdetails" style="margin-top:8px">' + (cycDetails ? 'Hide history' : 'History &amp; settings') + '</button>' + details + '</div>';
 }
 
+function undoButton() {
+  return undoStack().length ? '<div class="undorow"><button class="btn sm red" data-action="undo">Undo last change</button></div>' : '';
+}
 function renderTraining() {
   const prog = getProgram(store);
   const week = pv(store, 'week', 1);
@@ -345,7 +349,7 @@ function renderTraining() {
     '<div class="dayname">' + trainDay + ': ' + esc(day.title) + '</div><div class="dayhint">' + esc(rirInText(day.hint)) + '</div>' +
     '<div class="daytools"><button class="btn sm' + (low ? ' on' : '') + '" data-action="low" aria-pressed="' + low + '">' + (low ? '✓ Low-recovery day' : 'Low-recovery day') + '</button>' +
     '<span class="note">' + (low ? 'Sets cut by a third. The session still counts.' : 'Slept badly or still sore? Cuts every exercise to about 2/3 of the sets.') + '</span></div>' +
-    '<p class="note">Skips used today: ' + used + ' / ' + MAX_SKIPS + '</p>';
+    '<p class="note">Skips used today: ' + used + ' / ' + MAX_SKIPS + '</p>' + undoButton();
 
   day.ex.forEach((e, idx) => {
     const nSets = plannedSets(store, e, week, trainDay), rpe = rpeFor(e, week);
@@ -414,9 +418,10 @@ function renderTraining() {
 
   html = html.slice(0, statsAt) + section('stats', 'Training statistics', html.slice(statsAt));
 
-  // keep numbers typed into unlogged sets when the screen redraws
+  // keep numbers typed into unlogged sets when the screen redraws (not after Log, Edit or Undo, which set the boxes themselves)
   const typed = {};
-  document.querySelectorAll('#view .set[data-ex] input').forEach(inp => { if (inp.value) typed[inp.closest('.set').dataset.ex + '|' + inp.closest('.set').dataset.i + '|' + inp.name] = inp.value; });
+  if (!skipTyped) document.querySelectorAll('#view .set[data-ex] input').forEach(inp => { if (inp.value) typed[inp.closest('.set').dataset.ex + '|' + inp.closest('.set').dataset.i + '|' + inp.name] = inp.value; });
+  skipTyped = false;
   $('view').innerHTML = html;
   document.querySelectorAll('#view .set[data-ex] input').forEach(inp => {
     const k = inp.closest('.set').dataset.ex + '|' + inp.closest('.set').dataset.i + '|' + inp.name;
@@ -439,33 +444,34 @@ function cardioPanel() {
 }
 // Set rows. A logged set can be edited in place. Undo reverses only the latest set action (log or edit).
 function setRow(e, week, i, label) {
-  const s = setAt(store, week, e.id, i);
+  const s = setAt(store, week, e.id, i);            // logged set (counts toward XP)
+  const draft = rawSetAt(store, week, e.id, i);     // a set reopened by Undo
+  const cur = s || (draft && draft.open ? draft : null);   // what the boxes show
   const timed = isTimedEx(e);
   const at = 'data-ex="' + e.id + '" data-i="' + i + '"';
   if (s && !isEditing(week, e.id, i)) {
-    const undo = lastActionIs(week, e.id, i) ? '<button class="btn sm red" data-action="undo">Undo</button>' : '';
     return '<div class="set done"><span>' + label + '</span><span>' + setSummary(s, timed, e.unit) + effortTag(s.rpe) + '</span>' +
-      '<span class="rowtools"><button class="btn sm" data-action="editset" ' + at + '>Edit</button>' + undo + '</span></div>';
+      '<span class="rowtools"><button class="btn sm" data-action="editset" ' + at + '>Edit</button></span></div>';
   }
-  const rir = s && s.rpe > 0 ? rirOf(s.rpe) : '';
+  const rir = cur && cur.rpe > 0 ? rirOf(cur.rpe) : '';
   const running = !!timer && timer.ex === e.id && timer.i === String(i);
   const rirBox = '<input name="rpe" type="number" inputmode="decimal" placeholder="RIR" value="' + rir + '" step="0.5" min="0" max="10" aria-label="Reps in reserve (optional), ' + label + '">';
   if (timed) {
+    const unit = e.unit || 'sec';
     const tools = s
       ? '<button class="btn sm" data-action="saveedit" ' + at + '>Save</button><button class="btn sm" data-action="canceledit">Cancel</button>'
-      : '<button class="btn sm" data-action="timer" data-unit="' + (e.unit || 'sec') + '" data-timer="' + e.id + '|' + i + '" ' + at + '>' + (running ? '■ ' + mmss(Date.now() - timer.t0) : '▶ Timer') + '</button>' +
+      : '<button class="btn sm" data-action="timer" data-unit="' + unit + '" data-timer="' + e.id + '|' + i + '" ' + at + '>' + (running ? '■ ' + mmss(Date.now() - timer.t0) : '▶ Timer') + '</button>' +
         '<button class="btn sm" data-action="log">Log</button>';
-    const unit = e.unit || 'sec';
     return '<div class="set timed" ' + at + '><span class="lab">' + label + '</span>' +
-      '<input name="secs" type="number" inputmode="decimal" placeholder="' + unit + '" value="' + (s ? timeInBox(s, unit) : '') + '" aria-label="' + (unit === 'min' ? 'Minutes' : 'Seconds') + ', ' + label + '">' +
+      '<input name="secs" type="number" inputmode="decimal" placeholder="' + unit + '" value="' + (cur ? timeInBox(cur, unit) : '') + '" aria-label="' + (unit === 'min' ? 'Minutes' : 'Seconds') + ', ' + label + '">' +
       rirBox + '<span class="rowtools">' + tools + '</span></div>';
   }
   const tools = s
     ? '<button class="btn sm" data-action="saveedit" ' + at + '>Save</button><button class="btn sm" data-action="canceledit">Cancel</button>'
     : '<button class="btn sm" data-action="log">Log</button>';
   return '<div class="set" ' + at + '><span class="lab">' + label + '</span>' +
-    '<input name="wt" type="number" inputmode="decimal" placeholder="' + (e.bw ? '+lb' : (suggestedLoad(e, week) || 'lb')) + '" value="' + (s && s.wt > 0 ? s.wt : '') + '" aria-label="' + (e.bw ? 'Added weight (optional)' : 'Weight') + ', ' + label + '">' +
-    '<input name="reps" type="number" inputmode="numeric" placeholder="reps" value="' + (s ? s.reps : '') + '" aria-label="Reps, ' + label + '">' +
+    '<input name="wt" type="number" inputmode="decimal" placeholder="' + (e.bw ? '+lb' : (suggestedLoad(e, week) || 'lb')) + '" value="' + (cur && cur.wt > 0 ? cur.wt : '') + '" aria-label="' + (e.bw ? 'Added weight (optional)' : 'Weight') + ', ' + label + '">' +
+    '<input name="reps" type="number" inputmode="numeric" placeholder="reps" value="' + (cur && cur.reps ? cur.reps : '') + '" aria-label="Reps, ' + label + '">' +
     rirBox + '<span class="rowtools">' + tools + '</span></div>';
 }
 
@@ -475,9 +481,8 @@ const secsOf = s => (s.secs != null ? s.secs : s.reps);
 const mmss = ms => { const s = Math.floor(ms / 1000); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const setSummary = (s, timed, unit) => (timed ? (unit === 'min' ? +(secsOf(s) / 60).toFixed(2) + ' min' : secsOf(s) + ' sec') : (s.wt > 0 ? s.wt + ' × ' : 'BW × ') + s.reps);
 // The seconds box shows minutes for exercises logged in minutes.
-const timeInBox = (s, unit) => (unit === 'min' ? +(secsOf(s) / 60).toFixed(2) : secsOf(s));
+const timeInBox = (s, unit) => { const n = secsOf(s); if (!n) return ''; return unit === 'min' ? +(n / 60).toFixed(2) : n; };
 const isEditing = (week, exId, i) => !!editing && editing.week === +week && editing.ex === exId && String(editing.i) === String(i);
-const lastActionIs = (week, exId, i) => { const la = local().lastAct; return !!la && la.week === +week && la.ex === exId && String(la.i) === String(i); };
 
 // Stopwatch for timed sets. Uses the clock, so it stays right when the phone sleeps.
 function tickTimer() {
@@ -499,13 +504,29 @@ function stopTimer() {
   timer = null;
 }
 
-// Every set change (log or edit) passes through here, so Undo can restore exactly the state before it.
+// Undo history: one entry per step. Each step takes back one field of a set, in this order:
+// RIR, then time or reps, then weight. A step that leaves a set partly filled reopens it as a draft.
+const UNDO_FIELDS = ['rpe', 'secs', 'reps', 'wt'];
+const undoStack = () => local().undoStack || [];
+const fieldVal = x => (x == null ? 0 : +x);
 function recordAndCommit(week, exId, i, leaf) {
   const path = ['weeks', String(week), 'sets', exId + '|' + i];
   if (timer && timer.ex === exId && timer.i === String(i)) stopTimer();
   const cur = getAt(store, path);
-  setLocal({ lastAct: { week: +week, ex: exId, i: String(i), prev: cur ? JSON.parse(JSON.stringify(cur)) : null } });
+  const before = cur && !cur.del ? cur : null;
+  // Walk back from the new values, one changed field at a time, to the values before.
+  const steps = [];
+  let st = { ...leaf };
+  UNDO_FIELDS.forEach(f => {
+    if (fieldVal(leaf[f]) !== fieldVal(before && before[f])) { st = { ...st, [f]: before ? before[f] : null }; steps.push(st); }
+  });
+  // Every step but the last is an open draft; the last step is what was there before.
+  const seq = steps.slice(0, -1).map(x => ({ ...x, open: true })).concat([before ? { ...before } : null]);
+  const hist = undoStack().slice();
+  for (let k = seq.length - 1; k >= 0; k--) hist.push({ week: +week, ex: exId, i: String(i), state: seq[k] });
+  setLocal({ undoStack: hist.slice(-60) });
   editing = null;
+  skipTyped = true;
   commit(path, leaf);
 }
 
@@ -1074,14 +1095,15 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'undo': {
-      // One step back only: restores the set exactly as it was before the latest log or edit.
-      const la = local().lastAct;
-      if (!la) break;
-      const path = ['weeks', String(la.week), 'sets', la.ex + '|' + la.i];
-      // Clear the record first: commit() re-renders, and the Undo button must disappear with it.
-      setLocal({ lastAct: null });
+      // Takes back the latest step. The set reopens with the values it still has.
+      const hist = undoStack();
+      const top = hist[hist.length - 1];
+      if (!top) break;
+      setLocal({ undoStack: hist.slice(0, -1) });
       editing = null;
-      commit(path, la.prev ? { ...la.prev, at: now } : { ex: la.ex, wt: 0, reps: 0, rpe: 0, del: true, at: now });
+      skipTyped = true;
+      const path = ['weeks', String(top.week), 'sets', top.ex + '|' + top.i];
+      commit(path, top.state ? { ...top.state, del: false, at: now } : { ex: top.ex, wt: 0, reps: 0, rpe: 0, del: true, at: now });
       break;
     }
     case 'skip': commit(['weeks', week, 'skips', t.dataset.ex], { on: true, at: now }); break;
