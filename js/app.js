@@ -1,5 +1,5 @@
 import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, rawSetAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
-  getQuests, MANDATORY_QUESTS, isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest, periodStarts, CYCLE_PHASE } from './engine.js';
+  getQuests, isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest, periodStarts, CYCLE_PHASE } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal, getAt } from './store.js';
@@ -849,9 +849,9 @@ function renderQuestEditor(o) {
   const cut = qed.base.filter(id => !ids.includes(id)).length;
   const addable = QUEST_PRESETS.filter(p => !ids.includes(p.id));
   const row = q => '<div class="prow"><span><b>' + esc(q.name) + '</b> <span class="xp">+' + q.xp + ' XP</span><br><span class="muted">' + esc(q.desc || '') + '</span></span>' +
-    (MANDATORY_QUESTS.includes(q.id) ? '<span class="muted">always on</span>' : '<button class="btn xs red" data-action="qrm" data-id="' + esc(q.id) + '">Remove</button>') + '</div>';
+    '<button class="btn xs red" data-action="qrm" data-id="' + esc(q.id) + '">Remove</button></div>';
   o.innerHTML = '<div class="modal wiz edmodal"><h1>[ Quests ]</h1>' +
-    '<p class="note">Changes start today; past days keep the quests you had. Each quest you remove costs −' + RULES.QUEST_CUT_XP + ' XP. Adding is free. Protein, creatine and water stay on.</p>' +
+    '<p class="note">Changes start today; past days keep the quests you had. Each quest you remove costs −' + RULES.QUEST_CUT_XP + ' XP. Adding is free.</p>' +
     qed.list.map(row).join('') +
     (addable.length ? '<h2 class="sysmsg">Add a quest</h2><div class="row">' + addable.map(p => '<button class="btn xs" data-action="qadd" data-id="' + esc(p.id) + '">+ ' + esc(p.name) + ' · ' + p.xp + ' XP</button>').join('') + '</div>' : '') +
     '<h2 class="sysmsg">Your own quest</h2><div class="row"><input id="qName" maxlength="40" placeholder="Quest name" style="flex:1"><input id="qXp" type="number" inputmode="numeric" min="5" max="150" value="30" style="width:70px" aria-label="XP"><button class="btn sm" data-action="qaddcustom">Add</button></div>' +
@@ -1195,7 +1195,7 @@ document.addEventListener('click', async e => {
     case 'editquests': { ed = null; const cur = getQuests(store, today); qed = { list: cur.map(q => ({ ...q })), base: cur.map(q => q.id) }; renderOverlay(); break; }
     case 'qcancel': qed = null; renderOverlay(); break;
     case 'qadd': { const p = QUEST_PRESETS.find(x => x.id === t.dataset.id); if (p && !qed.list.some(q => q.id === p.id)) qed.list.push({ id: p.id, name: p.name, desc: p.desc, xp: p.xp, group: p.group, ...(p.trainingOnly ? { trainingOnly: true } : {}) }); renderOverlay(); break; }
-    case 'qrm': if (!MANDATORY_QUESTS.includes(t.dataset.id)) qed.list = qed.list.filter(q => q.id !== t.dataset.id); renderOverlay(); break;
+    case 'qrm': qed.list = qed.list.filter(q => q.id !== t.dataset.id); renderOverlay(); break;
     case 'qaddcustom': {
       const name = $('qName').value.trim().slice(0, 40), xp = parseInt($('qXp').value, 10);
       if (!name) { qMsg('Name the quest first.'); break; }

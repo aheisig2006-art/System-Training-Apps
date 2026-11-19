@@ -13,8 +13,6 @@ export const QUESTS = [
   { id: 'creatine', name: 'Take creatine (5 g)',     desc: 'Daily dose taken.',             xp: 8,   group: 'Nutrition' },
   { id: 'water',    name: 'Drink 24 oz of water',    desc: 'One full bottle.',              xp: 5,   group: 'Nutrition' }
 ];
-// Always on for every player, even if their saved list predates them.
-export const MANDATORY_QUESTS = ['protein', 'creatine', 'water'];
 export const RULES = {
   BONUS_XP: 100,        // all quests cleared in a day
   MISSED_XP: 20,        // per missed (ghosted) weekday or unrested day
@@ -98,10 +96,7 @@ export function getQuests(store, key = dateKey()) {
   if (!Array.isArray(stored) || !stored.length) return QUESTS;
   const byId = Object.fromEntries(QUESTS.map(q => [q.id, q]));
   const kept = stored.filter(q => !RETIRED_QUESTS.includes(q.id));
-  const have = new Set(kept.map(q => q.id));
-  const merged = kept.map(q => byId[q.id] ? { ...q, ...byId[q.id] } : q);
-  MANDATORY_QUESTS.forEach(id => { if (!have.has(id)) merged.push(byId[id]); });
-  return merged;
+  return kept.map(q => byId[q.id] ? { ...q, ...byId[q.id] } : q);
 }
 // Quests that count on a given day ("Work out" only on training days for generated plans).
 export function questsFor(store, key) {
