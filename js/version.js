@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.12.0';
+export const APP_VERSION = '2.12.1';
 export const WHATS_NEW = {
+  '2.12.1': 'Training Replacement also adds 10 VIT, matching the 10 STR from Work out.',
   '2.12.0': 'Training Replacement: on a training day, log a full-day activity instead of the session (climbing, hiking, snowboarding, paddling, camping, or Other). It completes Work out for 100 XP, free and unlimited. Sets, PRs and weekly targets are not affected.',
   '2.11.10': 'Minutes timers now log minutes and seconds: type 1:30, 130 or 90, and the Timer fills it in the same format. Seconds-only still works for short holds.',
   '2.11.9': 'Timed holds (plank, wall sit, skill holds) log sets of seconds with a Timer. Any exercise can switch between logging by time and by reps, and timed work can be logged in seconds or minutes. Timed sets earn half a point per second. RIR is optional. Edit a logged set to fix it in place. Undo takes back one step at a time: RIR, then time or reps, then weight. The set reopens with its values, so you can fix it.',

@@ -113,6 +113,7 @@ export function dayRec(store, key) { return (store.days && store.days[key]) || {
 // Stored on the day record, so it syncs like everything else. Unlimited and free.
 export const REPLACEMENT_ACTIVITIES = ['Climbing', 'Hiking', 'Snowboarding or skiing', 'Canoeing, kayaking or paddleboarding', 'Camping with hiking', 'Other'];
 export const REPLACEMENT_XP = 100;
+export const REPLACEMENT_VIT = 10;   // flat VIT per replacement day, matching the Strength the Work out quest gives
 export function replacementOf(store, key) {
   const r = dayRec(store, key).replace;
   return r && r.on ? r : null;
@@ -443,6 +444,7 @@ export function statusStats(store, today = dateKey()) {
       if (eff.fatigue) relief[d] = (relief[d] || 0) + eff.fatigue;
     });
   });
+  Object.keys(days).forEach(d => { if (replacementOf(store, d)) pts.vit += REPLACEMENT_VIT; });
   const starts = periodStarts(store);
   const inPeriodWeek = d => starts.some(s => { const k = diffDays(s, d); return k >= 0 && k < 7; });
   const keys = [...Object.keys(load), ...questDays, ...starts].sort();
