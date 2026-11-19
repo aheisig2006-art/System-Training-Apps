@@ -1,5 +1,5 @@
 import { RULES, compute, dateKey, dayName, addDays, pv, isChecked, liveSets, setAt, rawSetAt, e1rm, trainingEvents, levelFromTotal, questsFor, migrateLegacy,
-  getQuests, MANDATORY_QUESTS, isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest, periodStarts, CYCLE_PHASE } from './engine.js';
+  getQuests, MANDATORY_QUESTS, isSkipped, isLowDay, isPrAttempt, canSkip, skipsUsed, plannedSets, MAX_SKIPS, liftOf, cycleInfo, prE1RM, suggestWeight, POTIONS, POTION_CAP, potionEffects, potionClears, potionGrants, potionStock, potionRecs, rollPotion, penaltyQuest, periodStarts, CYCLE_PHASE, replacementOf, REPLACEMENT_ACTIVITIES, REPLACEMENT_XP } from './engine.js';
 import { LIFTS, getProgram, rpeFor } from './program.js';
 import { LIBRARY, generatePlan, GOALS, FOCUS, EQUIPMENT, EXPERIENCE, QUEST_PRESETS, blockWeek } from './library.js';
 import { loadStore, saveStore, putLeaf, mergeStore, local, setLocal, getAt } from './store.js';
@@ -20,6 +20,7 @@ let regOpen = false;
 let view = local().view || 'quests';
 let trainDay = null;             // chosen from the player's program
 let swapOpen = null;             // exercise id with the swap list open
+let replaceOpen = false;         // Training Replacement picker open
 let wiz = null;                  // welcome flow state
 let emailOpen = false;
 let ed = null;                   // plan editor: { plan, origin: 'profile' | 'wizard', note }
@@ -237,10 +238,12 @@ function renderQuests() {
   dayQuests.forEach(q => {
     const d = isChecked(store, today, q.id);
     const viaPotion = potionClears(store, today).has(q.id);
+    const viaReplacement = q.id === 'workout' && !!replacementOf(store, today);
+    const locked = viaPotion || viaReplacement;
     if ((q.group || 'Daily') !== lastGroup) { lastGroup = q.group || 'Daily'; html += '<div class="qgroup">' + esc(lastGroup) + '</div>'; }
-    html += '<button class="quest' + (d ? ' done' : '') + '" data-action="quest" data-id="' + esc(q.id) + '" aria-pressed="' + d + '"' + (viaPotion ? ' disabled' : '') + '>' +
+    html += '<button class="quest' + (d ? ' done' : '') + '" data-action="quest" data-id="' + esc(q.id) + '" aria-pressed="' + d + '"' + (locked ? ' disabled' : '') + '>' +
       '<span class="box">' + (d ? '&#10003;' : '') + '</span>' +
-      '<span class="qt"><span class="n">' + esc(q.name) + '</span><span class="d">' + esc(viaPotion ? 'Cleared by a Clear potion.' : questDesc(q)) + '</span></span>' +
+      '<span class="qt"><span class="n">' + esc(q.name) + '</span><span class="d">' + esc(viaPotion ? 'Cleared by a Clear potion.' : viaReplacement ? 'Covered by Training Replacement.' : questDesc(q)) + '</span></span>' +
       '<span class="xp">+' + q.xp + ' XP</span></button>';
   });
   const doneCount = dayQuests.filter(q => t.doneIds.includes(q.id)).length;
@@ -335,6 +338,8 @@ function renderTraining() {
     trainDay = prog.DAY_ORDER.includes(dayName(today)) ? dayName(today) : (prog.DAY_ORDER.includes(saved) ? saved : prog.DAY_ORDER[0]);
   }
   const day = prog.DAYS[trainDay];
+  const onToday = trainDay === dayName(today);
+  const rep = onToday ? replacementOf(store, today) : null;
   const bw = blockWeek(week);
   const deload = prog.generated ? bw === 5 : (prog.imported ? false : week % 5 === 0);
   const low = isLowDay(store, week, trainDay);
@@ -349,9 +354,13 @@ function renderTraining() {
     '<div class="dayname">' + trainDay + ': ' + esc(day.title) + '</div><div class="dayhint">' + esc(rirInText(day.hint)) + '</div>' +
     '<div class="daytools"><button class="btn sm' + (low ? ' on' : '') + '" data-action="low" aria-pressed="' + low + '">' + (low ? '✓ Low-recovery day' : 'Low-recovery day') + '</button>' +
     '<span class="note">' + (low ? 'Sets cut by a third. The session still counts.' : 'Slept badly or still sore? Cuts every exercise to about 2/3 of the sets.') + '</span></div>' +
+    (rep ? '' : (onToday ? replacementControls() : '')) +
     '<p class="note">Skips used today: ' + used + ' / ' + MAX_SKIPS + '</p>' + undoButton();
 
-  day.ex.forEach((e, idx) => {
+  if (rep) html += '<div class="restbox on"><b>Training replaced today:</b> ' + esc(rep.activity) + (rep.note ? ' (' + esc(rep.note) + ')' : '') +
+    '. Work out is complete for +' + REPLACEMENT_XP + ' XP. Sets logged earlier today stay in your history. <button class="btn sm" data-action="unreplace">Cancel replacement</button></div>';
+
+  (rep ? [] : day.ex).forEach((e, idx) => {
     const nSets = plannedSets(store, e, week, trainDay), rpe = rpeFor(e, week);
     const skipped = isSkipped(store, week, e.id);
     const pr = !!e.lift && isPrAttempt(store, week, e.id);
@@ -429,6 +438,15 @@ function renderTraining() {
   });
 }
 // Collapsible block. The open or closed state is a synced profile field, so every device matches.
+// Training Replacement controls for today's session: a button, then the activity picker when open.
+function replacementControls() {
+  if (!replaceOpen) return '<div class="daytools"><button class="btn sm" data-action="replace-open">Training Replacement</button>' +
+    '<span class="note">Climbing, hiking, snowboarding, paddling or camping instead of today\'s session. +' + REPLACEMENT_XP + ' XP, free, unlimited.</span></div>';
+  return '<div class="swaplist"><p class="note">What did you do instead? It must be a full-day, physically demanding activity away from gym equipment. It completes Work out for +' + REPLACEMENT_XP + ' XP and grays out today\'s session.</p>' +
+    REPLACEMENT_ACTIVITIES.filter(a => a !== 'Other').map(a => '<button class="opt sm" data-action="replace-pick" data-act="' + esc(a) + '">' + esc(a) + '</button>').join('') +
+    '<div class="row"><input id="replaceOther" type="text" maxlength="60" placeholder="Other: what did you do?" aria-label="Other activity"><button class="btn sm" data-action="replace-other">Log other</button></div>' +
+    '<button class="btn sm" data-action="replace-open">Cancel</button></div>';
+}
 function section(key, title, inner) {
   const collapsed = !!pv(store, 'fold_' + key, false);
   return '<div class="sect"><button class="sechead" data-action="fold" data-key="' + key + '" aria-expanded="' + !collapsed + '">' +
@@ -1120,6 +1138,16 @@ document.addEventListener('click', async e => {
       commit(path, top.state ? { ...top.state, del: false, at: now } : { ex: top.ex, wt: 0, reps: 0, rpe: 0, del: true, at: now });
       break;
     }
+    case 'replace-open': replaceOpen = !replaceOpen; render(); break;
+    case 'replace-pick': replaceOpen = false; commit(['days', today, 'replace'], { on: true, activity: t.dataset.act, note: '', at: now }); break;
+    case 'replace-other': {
+      const v = ($('replaceOther').value || '').trim().slice(0, 60);
+      if (!v) break;
+      replaceOpen = false;
+      commit(['days', today, 'replace'], { on: true, activity: 'Other', note: v, at: now });
+      break;
+    }
+    case 'unreplace': commit(['days', today, 'replace'], { on: false, at: now }); break;
     case 'skip': commit(['weeks', week, 'skips', t.dataset.ex], { on: true, at: now }); break;
     case 'unskip': commit(['weeks', week, 'skips', t.dataset.ex], { on: false, at: now }); break;
     case 'low': commit(['weeks', week, 'low', trainDay], { on: !isLowDay(store, +week, trainDay), at: now }); break;
