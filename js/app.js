@@ -21,6 +21,7 @@ let view = local().view || 'quests';
 let trainDay = null;             // chosen from the player's program
 let swapOpen = null;             // exercise id with the swap list open
 let replaceOpen = false;         // Training Replacement picker open
+let openInfo = null;             // which (i) explanation is open, if any
 let wiz = null;                  // welcome flow state
 let emailOpen = false;
 let ed = null;                   // plan editor: { plan, origin: 'profile' | 'wizard', note }
@@ -353,7 +354,7 @@ function renderTraining() {
     (deload ? '<div class="deload">Deload week. Take about half the sets, stay around RIR 4–5, and do not test maxes.</div>' : '') +
     '<div class="dayname">' + trainDay + ': ' + esc(day.title) + '</div><div class="dayhint">' + esc(rirInText(day.hint)) + '</div>' +
     '<div class="daytools"><button class="btn sm' + (low ? ' on' : '') + '" data-action="low" aria-pressed="' + low + '">' + (low ? '✓ Low-recovery day' : 'Low-recovery day') + '</button>' +
-    '<span class="note">' + (low ? 'Sets cut by a third. The session still counts.' : 'Slept badly or still sore? Cuts every exercise to about 2/3 of the sets.') + '</span></div>' +
+    infoBtn('low') + '</div>' + infoBox('low', 'Slept badly or still sore? Cuts every exercise to about 2/3 of the sets. The session still counts.') +
     (rep ? '' : (onToday ? replacementControls() : '')) +
     '<p class="note">Skips used today: ' + used + ' / ' + MAX_SKIPS + '</p>' + undoButton();
 
@@ -440,12 +441,20 @@ function renderTraining() {
 // Collapsible block. The open or closed state is a synced profile field, so every device matches.
 // Training Replacement controls for today's session: a button, then the activity picker when open.
 function replacementControls() {
-  if (!replaceOpen) return '<div class="daytools"><button class="btn sm" data-action="replace-open">Training Replacement</button>' +
-    '<span class="note">Climbing, hiking, snowboarding, paddling or camping instead of today\'s session. +' + REPLACEMENT_XP + ' XP, free, unlimited.</span></div>';
-  return '<div class="swaplist"><p class="note">What did you do instead? It must be a full-day, physically demanding activity away from gym equipment. It completes Work out for +' + REPLACEMENT_XP + ' XP and grays out today\'s session.</p>' +
+  const btn = '<div class="daytools"><button class="btn sm" data-action="replace-open" aria-expanded="' + replaceOpen + '">Training Replacement</button>' + infoBtn('replace') + '</div>' +
+    infoBox('replace', 'Climbing, hiking, snowboarding, paddling or camping instead of today\'s session. It must be a full-day, physically demanding activity away from gym equipment. It completes Work out for +' + REPLACEMENT_XP + ' XP, grays out today\'s session, and is free and unlimited. Sets, PRs and weekly targets are not affected.');
+  if (!replaceOpen) return btn;
+  return btn + '<div class="swaplist">' +
     REPLACEMENT_ACTIVITIES.filter(a => a !== 'Other').map(a => '<button class="opt sm" data-action="replace-pick" data-act="' + esc(a) + '">' + esc(a) + '</button>').join('') +
     '<div class="row"><input id="replaceOther" type="text" maxlength="60" placeholder="Other: what did you do?" aria-label="Other activity"><button class="btn sm" data-action="replace-other">Log other</button></div>' +
     '<button class="btn sm" data-action="replace-open">Cancel</button></div>';
+}
+// (i) button and the explanation it opens. Only one explanation is open at a time.
+function infoBtn(key) {
+  return '<button class="info" data-action="info" data-key="' + key + '" aria-expanded="' + (openInfo === key) + '" aria-label="About this">i</button>';
+}
+function infoBox(key, text) {
+  return openInfo === key ? '<div class="infobox">' + esc(text) + '</div>' : '';
 }
 function section(key, title, inner) {
   const collapsed = !!pv(store, 'fold_' + key, false);
@@ -1138,6 +1147,7 @@ document.addEventListener('click', async e => {
       commit(path, top.state ? { ...top.state, del: false, at: now } : { ex: top.ex, wt: 0, reps: 0, rpe: 0, del: true, at: now });
       break;
     }
+    case 'info': openInfo = openInfo === t.dataset.key ? null : t.dataset.key; render(); break;
     case 'replace-open': replaceOpen = !replaceOpen; render(); break;
     case 'replace-pick': replaceOpen = false; commit(['days', today, 'replace'], { on: true, activity: t.dataset.act, note: '', at: now }); break;
     case 'replace-other': {
