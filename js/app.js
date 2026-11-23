@@ -615,7 +615,7 @@ function renderProfile() {
         : prog.imported ? 'Your own program, ' + prog.DAY_ORDER.length + ' days a week.' : 'Your original program, ' + prog.DAY_ORDER.length + ' days a week.') +
       ' Logged history and XP stay when you change it.</p>' +
       '<div class="row"><button class="btn" data-action="editplan">Edit my plan</button><button class="btn" data-action="importplan">Paste or upload a program</button><button class="btn" data-action="editquests">Edit quests</button></div></div>' +
-    '<div class="panel"><h1>Body &amp; PRs</h1><p class="note">Sets your suggested loads and protein target. Change any time.</p><div id="bodyEdit">' + bodyFormHtml(pv(store, 'body', null)) + '</div><button class="btn" data-action="savebody">Save</button></div>' +
+    '<div class="panel"><h1>Body &amp; PRs</h1><p class="note">Sets your suggested loads and protein target. Change any time.</p><div id="bodyEdit">' + bodyFormHtml(pv(store, 'body', null), getProgram(store).settings) + '</div><button class="btn" data-action="savebody">Save</button></div>' +
     '<div class="panel"><h1>Cycle Tracking</h1><p class="note">Track period start dates. The tracker lives at the top of the Training tab.</p>' +
       '<label class="switch"><input type="checkbox" id="cycleToggle"' + (ci.on ? ' checked' : '') + '> <span>' + (ci.on ? 'On' : 'Off') + '</span></label></div>' +
     (removed.length ? '<div class="panel"><h1>Removed Exercises</h1>' + removed.map(r => '<div class="prow"><span>' + esc(r.day) + ': ' + esc(r.name) + '</span><button class="btn sm" data-action="restore" data-ex="' + r.id + '">Restore</button></div>').join('') + '</div>' : '') +
@@ -649,29 +649,47 @@ function editCommit(id, patch) {
   const cur = (store.profile.edits || {})[id] || {};
   commit(['profile', 'edits', id], { swap: cur.swap || null, removed: !!cur.removed, sets: cur.sets || 0, track: cur.track || null, unit: cur.unit || null, ...patch, at: Date.now() });
 }
-const LIFT_KEYS = ['squat', 'bench', 'deadlift'], REP_KEYS = ['pullups', 'dips', 'pushups'];
-function bodyFormHtml(b) {
+// PR fields depend on the plan. Lifts (weight, one rep) are stored in prs; bodyweight bests (one number) in reps.
+const LIFT_KEYS = ['squat', 'bench', 'deadlift', 'wpull'], REP_KEYS = ['pushups', 'dips', 'pullups', 'pistol', 'muscleup', 'hspu'];
+const LIFT_ROWS = [['squat', 'Squat', 'one rep, lb'], ['bench', 'Bench', 'one rep, lb'], ['deadlift', 'Deadlift', 'one rep, lb']];
+const SKILL_ROWS = [
+  ['pushups', 'Push-ups', 'best strict set'], ['dips', 'Dips', 'best strict set'], ['pullups', 'Pull-ups', 'best strict set'],
+  ['pistol', 'Pistol squat', 'best set per leg, full depth'], ['muscleup', 'Muscle-up', 'best strict set'],
+  ['hspu', 'Handstand push-up', 'best strict set, wall OK'], ['wpull', 'Weighted pull-up', 'added lb, one rep']
+];
+// Which PR rows a plan needs. Gym strength or hypertrophy plans get the lifts; calisthenics, bodyweight and mix plans get the skills.
+function prGroups(settings) {
+  if (!settings || (!settings.goal && !settings.equipment)) return { lifts: true, skills: true };
+  return {
+    lifts: settings.equipment !== 'none' && settings.goal !== 'calisthenics',
+    skills: settings.goal === 'calisthenics' || settings.goal === 'mix' || settings.equipment === 'none'
+  };
+}
+function bodyFormHtml(b, settings) {
   b = b || {};
   const prs = b.prs || {}, reps = b.reps || {};
+  const g = prGroups(settings);
   const v = x => (x === null || x === undefined ? '' : esc(x));
-  const liftRow = (k, label) => { const p = prs[k] || {}; return '<div class="prline one"><span>' + label + '</span>' +
-    '<input type="number" inputmode="decimal" data-body="' + k + '.wt" placeholder="lb" aria-label="' + label + ' PR weight" value="' + v(p.wt) + '"></div>'; };
-  const repRow = (k, label) => { const p = reps[k] || {}; return '<div class="prline one"><span>' + label + '</span>' +
-    '<input type="number" inputmode="numeric" data-body="' + k + '.n" placeholder="max reps" aria-label="' + label + ' max reps" value="' + v(p.n) + '"></div>'; };
-  return '<div class="bodyform">' +
+  const wtRow = (k, label, hint) => { const p = prs[k] || {}; return '<div class="prline one"><span>' + label + ' <span class="muted">' + hint + '</span></span>' +
+    '<input type="number" inputmode="decimal" data-body="' + k + '.wt" placeholder="lb" aria-label="' + label + ' PR" value="' + v(p.wt) + '"></div>'; };
+  const nRow = (k, label, hint) => { const p = reps[k] || {}; return '<div class="prline one"><span>' + label + ' <span class="muted">' + hint + '</span></span>' +
+    '<input type="number" inputmode="numeric" data-body="' + k + '.n" placeholder="number" aria-label="' + label + ' PR" value="' + v(p.n) + '"></div>'; };
+  let html = '<div class="bodyform">' +
     '<div class="prline one"><span>Height (inches)</span><input type="number" inputmode="decimal" data-body="height.v" placeholder="66" aria-label="Height in inches" value="' + v(b.heightIn) + '"></div>' +
-    '<div class="prline one"><span>Bodyweight (lb)</span><input type="number" inputmode="decimal" data-body="weight.v" placeholder="lb" aria-label="Bodyweight in pounds" value="' + v(b.weightLb) + '"></div>' +
-    '<p class="note">Your PRs are singles: enter the heaviest weight you can lift for one rep. Leave blank if unknown.</p>' +
-    liftRow('squat', 'Squat') + liftRow('bench', 'Bench') + liftRow('deadlift', 'Deadlift') +
-    repRow('pullups', 'Pull-ups') + repRow('dips', 'Dips') + repRow('pushups', 'Push-ups') + '</div>';
+    '<div class="prline one"><span>Bodyweight (lb)</span><input type="number" inputmode="decimal" data-body="weight.v" placeholder="lb" aria-label="Bodyweight in pounds" value="' + v(b.weightLb) + '"></div>';
+  if (g.lifts) html += '<p class="note">Your lift PRs. Leave blank if unknown.</p>' + LIFT_ROWS.map(r => wtRow(r[0], r[1], r[2])).join('');
+  if (g.skills) html += '<p class="note">Your bodyweight PRs. Leave blank if unknown.</p>' + SKILL_ROWS.map(r => (r[0] === 'wpull' ? wtRow(r[0], r[1], r[2]) : nRow(r[0], r[1], r[2]))).join('');
+  return html + '</div>';
 }
-function readBody(root) {
+// Reads the form. Rows that are not on screen keep their saved values, so a calisthenics plan never wipes lift PRs.
+function readBody(root, prev) {
   const rec = {};
   if (root) root.querySelectorAll('[data-body]').forEach(inp => { const [k, f] = inp.dataset.body.split('.'); (rec[k] = rec[k] || {})[f] = inp.value.trim(); });
   const num = x => { const n = parseFloat(x); return n > 0 ? n : null; };
-  const out = { heightIn: num((rec.height || {}).v), weightLb: num((rec.weight || {}).v), prs: {}, reps: {} };
-  LIFT_KEYS.forEach(k => { const r = rec[k] || {}; const wt = num(r.wt); if (wt) out.prs[k] = { wt }; });
-  REP_KEYS.forEach(k => { const r = rec[k] || {}; const n = num(r.n); if (n) out.reps[k] = { n: Math.round(n) }; });
+  const old = prev || {};
+  const out = { heightIn: num((rec.height || {}).v), weightLb: num((rec.weight || {}).v), prs: { ...(old.prs || {}) }, reps: { ...(old.reps || {}) } };
+  LIFT_KEYS.forEach(k => { if (!rec[k]) return; const wt = num(rec[k].wt); if (wt) out.prs[k] = { wt }; else delete out.prs[k]; });
+  REP_KEYS.forEach(k => { if (!rec[k]) return; const n = num(rec[k].n); if (n) out.reps[k] = { n: Math.round(n) }; else delete out.reps[k]; });
   return out;
 }
 
@@ -737,7 +755,7 @@ function renderWizard(o) {
     case 'days': body = '<h2 class="sysmsg">How many days a week?</h2>' + optCards('days', { 3: { label: '3 days', desc: 'Full body: Mon, Wed, Fri' }, 4: { label: '4 days', desc: 'Upper / lower: Mon, Tue, Thu, Fri' }, 5: { label: '5 days', desc: 'Upper, lower, push, pull, legs: Mon–Fri' } }, d.days); canNext = !!d.days; break;
     case 'experience': body = '<h2 class="sysmsg">Training experience?</h2>' + optCards('experience', EXPERIENCE, d.experience); canNext = !!d.experience; break;
     case 'body':
-      body = '<h2 class="sysmsg">Your numbers.</h2><p class="note">Optional. The System uses these to suggest your starting loads and protein target. Leave out anything you do not know.</p><div id="wizBody">' + bodyFormHtml(d.body) + '</div>';
+      body = '<h2 class="sysmsg">Your numbers.</h2><p class="note">Optional. The System uses these to suggest your starting loads and protein target. Leave out anything you do not know.</p><div id="wizBody">' + bodyFormHtml(d.body, { goal: d.goal, equipment: d.equipment }) + '</div>';
       break;
     case 'cycle': body = '<h2 class="sysmsg">Cycle-aware scheduling?</h2><p class="note">Optional. Log period start dates and the System flags the days to avoid max-effort lifting. You can change this later.</p>' +
       optCards('cycle', { on: { label: 'Turn it on', desc: 'Track my cycle' }, off: { label: 'No thanks', desc: 'Skip it' } }, d.cycle); canNext = !!d.cycle; break;
@@ -965,14 +983,14 @@ function wizNext() {
     if (!n) { $('wizMsg').textContent = 'Enter a hunter name.'; $('wizName').focus(); return; }
     wiz.d.name = n; wiz.d.character = CHARACTERS[regIndex].id;
   }
-  if (steps[wiz.step] === 'body') wiz.d.body = readBody($('wizBody'));
+  if (steps[wiz.step] === 'body') wiz.d.body = readBody($('wizBody'), wiz.d.body);
   wiz.step++; renderOverlay();
   const m = document.querySelector('.modal'); if (m) m.scrollTop = 0;
 }
 function wizBack() {
   if (wizSteps()[wiz.step] === 'plan' && ed) syncEditorInputs();
   if (wizSteps()[wiz.step] === 'hunter') wiz.d.name = $('wizName').value.trim();
-  if (wizSteps()[wiz.step] === 'body') wiz.d.body = readBody($('wizBody'));
+  if (wizSteps()[wiz.step] === 'body') wiz.d.body = readBody($('wizBody'), wiz.d.body);
   wiz.step = Math.max(0, wiz.step - 1); renderOverlay();
 }
 function wizFinish() {
@@ -1160,7 +1178,7 @@ document.addEventListener('click', async e => {
       editCommit(t.dataset.ex, { sets: next - base });
       break;
     }
-    case 'savebody': setProfile('body', readBody($('bodyEdit'))); break;
+    case 'savebody': setProfile('body', readBody($('bodyEdit'), pv(store, 'body', null))); break;
     case 'remove': {
       const ex = getProgram(store).EX[t.dataset.ex];
       if (ex && confirm('Remove "' + ex.name + '" from your plan? You can restore it from the Profile tab.')) editCommit(t.dataset.ex, { removed: true });

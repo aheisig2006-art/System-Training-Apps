@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.12.4';
+export const APP_VERSION = '2.12.5';
 export const WHATS_NEW = {
+  '2.12.5': 'PRs now follow your plan. Gym strength and muscle plans ask for squat, bench and deadlift. Calisthenics, bodyweight and mix plans ask for push-ups, dips, pull-ups, pistol squat, muscle-up, handstand push-up and weighted pull-up. Each is one number. Rows you cannot see keep their saved values.',
   '2.12.4': 'Add and remove sets on each exercise is back. Set Break potions are gone: any you had are now Clear potions. Clear potions check off 8,000 steps, 100 push-ups or your protein target.',
   '2.12.3': 'Set Break potions are gone, and sets can no longer be added or removed from a workout. Potions now only give XP or clear one quest of your choice (not Work out). A Set Break potion still in stock is swapped for a new drop.',
   '2.12.2': 'Low-recovery day and Training Replacement explain themselves through an (i) button instead of text under the buttons.',
