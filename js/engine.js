@@ -230,13 +230,13 @@ export function trainingEvents(store) {
 // ---------- potions ----------
 // Stored as profile records named potion:<id>, so they sync with everything else.
 // A potion's type is rolled once, when it is granted, and kept with the record.
+// Potions only touch quests and XP. They never add, remove or skip a workout set.
 export const POTIONS = {
-  minor:    { name: 'Minor potion', xp: 25 },
-  major:    { name: 'Major potion', xp: 50 },
-  clear:    { name: 'Clear potion' },
-  setbreak: { name: 'Set Break potion' }
+  minor: { name: 'Minor potion', xp: 25 },
+  major: { name: 'Major potion', xp: 50 },
+  clear: { name: 'Clear potion' }
 };
-const POTION_ODDS = [['minor', 35], ['major', 25], ['clear', 20], ['setbreak', 20]];
+const POTION_ODDS = [['minor', 45], ['major', 30], ['clear', 25]];
 export const POTION_CAP = 3;
 export const RANK_LEVELS = [5, 10, 15, 20, 30];
 export function rollPotion(r = Math.random()) {
