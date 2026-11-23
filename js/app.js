@@ -90,11 +90,11 @@ function applyPotionGrants() {
   const res = potionGrants(store, game, today);
   const now = Date.now();
   const writes = [];
-  // Set Break potions are retired: any still in stock is rerolled into a quest or XP potion.
+  // Set Break potions are retired: any still in stock becomes a Clear potion.
   const recs = potionRecs(store);
   Object.keys(recs).forEach(id => {
     const p = recs[id];
-    if (p && !p.wasted && !p.used && p.type === 'setbreak') writes.push([['profile', 'potion:' + id], { ...p, type: rollPotion(), at: now }]);
+    if (p && !p.wasted && !p.used && p.type === 'setbreak') writes.push([['profile', 'potion:' + id], { ...p, type: 'clear', at: now }]);
   });
   if (res.setup) {
     writes.push([['profile', 'potionsFrom'], { v: res.setup, at: now }], [['profile', 'potionLevel'], { v: res.level, at: now }]);
@@ -118,7 +118,7 @@ function usePotion(id) {
   const used = { day: today, at: Date.now() };
   if (p.type === 'clear') {
     const sel = document.querySelector('[data-potion-quest="' + id + '"]');
-    if (!sel || !sel.value || sel.value === 'workout') return;
+    if (!sel || !CLEAR_QUESTS.includes(sel.value)) return;
     used.quest = sel.value;
   }
   commit(['profile', 'potion:' + id], { ...p, used, at: Date.now() });
@@ -132,9 +132,11 @@ const POTION_ICON = '<svg viewBox="0 0 24 32" width="20" height="27" aria-hidden
   '<path d="M3.2 17.5 H20.8 V28 Q20.8 30 18.8 30 H5.2 Q3.2 30 3.2 28 Z" fill="url(#potionFill)"/>' +
   '<circle cx="9" cy="23" r="1.2" fill="#e6ecff" opacity=".8"/><circle cx="14.5" cy="25.5" r=".9" fill="#e6ecff" opacity=".7"/>' +
   '</svg>';
+// The only quests a Clear potion can complete.
+const CLEAR_QUESTS = ['steps', 'pushups', 'protein'];
 function renderPotions() {
   const stock = potionStock(store);
-  const quests = questsFor(store, today).filter(q => q.id !== 'workout' && !isChecked(store, today, q.id));
+  const quests = questsFor(store, today).filter(q => CLEAR_QUESTS.includes(q.id) && !isChecked(store, today, q.id));
   // Potions only clear a quest or add XP. Sets are never touched.
   const rows = stock.filter(p => POTIONS[p.type]).map(p => {
     const def = POTIONS[p.type];
@@ -149,7 +151,7 @@ function renderPotions() {
     .filter(p => p && !p.wasted && p.used && p.used.day === today && POTIONS[p.type])
     .map(p => '<p class="note">Used today: ' + esc(POTIONS[p.type].name) + (p.used.quest ? ' on a quest' : '') + (POTIONS[p.type].xp ? ' (+' + POTIONS[p.type].xp + ' XP)' : '') + '.</p>').join('');
   return '<div class="panel"><h1 class="pot-h"><span class="pot-ico" role="img" aria-label="Potions">' + POTION_ICON + '</span><span>· ' + stock.length + ' / ' + POTION_CAP + '</span></h1>' +
-    '<p class="note">Earned: one per cleared day, one per level, two per rank-up. Drops are random: XP, or clear one quest of your choice (not Work out). You can hold ' + POTION_CAP + '. They only work on today.</p>' +
+    '<p class="note">Earned: one per cleared day, one per level, two per rank-up. Drops are random: XP, or a Clear that checks off 8,000 steps, 100 push-ups or your protein target. You can hold ' + POTION_CAP + '. They only work on today.</p>' +
     (rows || '<p class="note">None yet.</p>') + usedToday + '</div>';
 }
 
@@ -361,7 +363,9 @@ function renderTraining() {
         (hit ? ' <span class="hint">&rarr; top of range at RIR 2 or more. Add 5 lb next time.</span>' : '') + '</div>';
     }
     const skippable = canSkip(day, e);
+    const base = e.baseSets || e.sets;
     let tools = '<div class="tools">' +
+      '<span class="setctl">Sets <button class="btn xs" data-action="setadj" data-ex="' + e.id + '" data-d="-1"' + (e.sets <= 1 ? ' disabled' : '') + ' aria-label="Remove a set">−</button> <b>' + e.sets + '</b> <button class="btn xs" data-action="setadj" data-ex="' + e.id + '" data-d="1"' + (e.sets >= base + 3 ? ' disabled' : '') + ' aria-label="Add a set">+</button></span>' +
       '<button class="btn xs" data-action="swapopen" data-ex="' + e.id + '">' + (swapOpen === e.id ? 'Close' : 'Swap') + '</button>' +
       '<button class="btn xs" data-action="track" data-ex="' + e.id + '">' + (e.track === 'time' ? 'Log by reps' : 'Log by time') + '</button>' +
       (e.track === 'time' ? '<button class="btn xs" data-action="unit" data-ex="' + e.id + '">' + (e.unit === 'min' ? 'Use seconds' : 'Use minutes') + '</button>' : '') +
@@ -1148,6 +1152,14 @@ document.addEventListener('click', async e => {
     case 'pr': commit(['weeks', week, 'pr', t.dataset.ex], { on: !isPrAttempt(store, +week, t.dataset.ex), at: now }); break;
     case 'swapopen': swapOpen = swapOpen === t.dataset.ex ? null : t.dataset.ex; render(); break;
     case 'swapto': swapOpen = null; editCommit(t.dataset.ex, { swap: t.dataset.lib || null, removed: false, track: null, unit: null }); break;
+    case 'setadj': {
+      const ex = getProgram(store).EX[t.dataset.ex];
+      if (!ex) break;
+      const base = ex.baseSets || ex.sets;
+      const next = Math.min(base + 3, Math.max(1, ex.sets + parseInt(t.dataset.d, 10)));
+      editCommit(t.dataset.ex, { sets: next - base });
+      break;
+    }
     case 'savebody': setProfile('body', readBody($('bodyEdit'))); break;
     case 'remove': {
       const ex = getProgram(store).EX[t.dataset.ex];

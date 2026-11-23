@@ -1,6 +1,7 @@
 // Bump APP_VERSION (and VERSION in sw.js) with every release.
-export const APP_VERSION = '2.12.3';
+export const APP_VERSION = '2.12.4';
 export const WHATS_NEW = {
+  '2.12.4': 'Add and remove sets on each exercise is back. Set Break potions are gone: any you had are now Clear potions. Clear potions check off 8,000 steps, 100 push-ups or your protein target.',
   '2.12.3': 'Set Break potions are gone, and sets can no longer be added or removed from a workout. Potions now only give XP or clear one quest of your choice (not Work out). A Set Break potion still in stock is swapped for a new drop.',
   '2.12.2': 'Low-recovery day and Training Replacement explain themselves through an (i) button instead of text under the buttons.',
   '2.12.1': 'Training Replacement also adds 10 VIT, matching the 10 STR from Work out.',
